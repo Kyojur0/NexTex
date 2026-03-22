@@ -13,7 +13,7 @@ import {
   Trash2,
   Edit2,
   MoreVertical,
-  RefreshCw,
+  Clock,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -23,18 +23,12 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { useEditorStore, FileItem } from "@/lib/store"
-import {
-  createItem as apiCreateItem,
-  renameItem as apiRenameItem,
-  deleteItem as apiDeleteItem,
-} from "@/lib/api"
 
 interface FileTreeItemProps {
-  item: FileItem & { path?: string }
+  item: FileItem
   depth: number
   activeFileId: string | null
   onFileSelect: (id: string) => void
-  onRefresh?: () => void
 }
 
 const FileTreeItemComponent = memo(function FileTreeItem({
@@ -42,68 +36,35 @@ const FileTreeItemComponent = memo(function FileTreeItem({
   depth,
   activeFileId,
   onFileSelect,
-  onRefresh,
 }: FileTreeItemProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState(item.name)
-
+  
   const { renameFile, deleteFile, createFile } = useEditorStore()
-
+  
   const isActive = activeFileId === item.id
   const isFolder = item.type === "folder"
 
-  const handleRename = useCallback(async () => {
-    if (newName.trim() && newName !== item.name && (item as any).path) {
-      const pathParts = (item as any).path.split("/")
-      pathParts[pathParts.length - 1] = newName.trim()
-      const newPath = pathParts.join("/")
-      try {
-        await apiRenameItem((item as any).path, newPath)
-        renameFile(item.id, newName.trim())
-        onRefresh?.()
-      } catch (err) {
-        console.error("Failed to rename:", err)
-      }
+  const handleRename = useCallback(() => {
+    if (newName.trim() && newName !== item.name) {
+      renameFile(item.id, newName.trim())
     }
     setIsRenaming(false)
     setNewName(item.name)
-  }, [newName, item, renameFile, onRefresh])
+  }, [newName, item.id, item.name, renameFile])
 
-  const handleDelete = useCallback(async () => {
-    if (!(item as any).path) return
-    try {
-      await apiDeleteItem((item as any).path)
-      deleteFile(item.id)
-      onRefresh?.()
-    } catch (err) {
-      console.error("Failed to delete:", err)
-    }
-  }, [item, deleteFile, onRefresh])
+  const handleDelete = useCallback(() => {
+    deleteFile(item.id)
+  }, [item.id, deleteFile])
 
-  const handleCreateFile = useCallback(async () => {
-    if (!(item as any).path) return
-    const newFilePath = `${(item as any).path}/untitled.tex`
-    try {
-      await apiCreateItem(newFilePath, "file")
-      createFile(item.id, "untitled.tex", "file")
-      onRefresh?.()
-    } catch (err) {
-      console.error("Failed to create file:", err)
-    }
-  }, [item, createFile, onRefresh])
+  const handleCreateFile = useCallback(() => {
+    createFile(item.id, "untitled.tex", "file")
+  }, [item.id, createFile])
 
-  const handleCreateFolder = useCallback(async () => {
-    if (!(item as any).path) return
-    const newFolderPath = `${(item as any).path}/New Folder`
-    try {
-      await apiCreateItem(newFolderPath, "folder")
-      createFile(item.id, "New Folder", "folder")
-      onRefresh?.()
-    } catch (err) {
-      console.error("Failed to create folder:", err)
-    }
-  }, [item, createFile, onRefresh])
+  const handleCreateFolder = useCallback(() => {
+    createFile(item.id, "New Folder", "folder")
+  }, [item.id, createFile])
 
   return (
     <div>
@@ -209,7 +170,6 @@ const FileTreeItemComponent = memo(function FileTreeItem({
               depth={depth + 1}
               activeFileId={activeFileId}
               onFileSelect={onFileSelect}
-              onRefresh={onRefresh}
             />
           ))}
         </div>
@@ -222,81 +182,56 @@ interface FileTreeProps {
   files: FileItem[]
   activeFileId: string | null
   onFileSelect: (id: string) => void
-  onRefresh?: () => void
+  onShowHistory: () => void
 }
 
 export const FileTree = memo(function FileTree({
   files,
   activeFileId,
   onFileSelect,
-  onRefresh,
+  onShowHistory,
 }: FileTreeProps) {
   const { projectName, createFile } = useEditorStore()
 
-  const handleCreateRootFile = useCallback(async () => {
-    try {
-      await apiCreateItem("untitled.tex", "file")
-      createFile(null, "untitled.tex", "file")
-      onRefresh?.()
-    } catch (err) {
-      console.error("Failed to create root file:", err)
-    }
-  }, [createFile, onRefresh])
+  const handleCreateRootFile = useCallback(() => {
+    createFile(null, "untitled.tex", "file")
+  }, [createFile])
 
-  const handleCreateRootFolder = useCallback(async () => {
-    try {
-      await apiCreateItem("New Folder", "folder")
-      createFile(null, "New Folder", "folder")
-      onRefresh?.()
-    } catch (err) {
-      console.error("Failed to create root folder:", err)
-    }
-  }, [createFile, onRefresh])
+  const handleCreateRootFolder = useCallback(() => {
+    createFile(null, "New Folder", "folder")
+  }, [createFile])
 
   return (
     <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border">
       {/* Header */}
       <div className="h-9 border-b border-sidebar-border px-4 flex items-center justify-between">
         <span className="text-xs font-semibold text-sidebar-foreground truncate">
-          ~/stuff
+          {projectName}
         </span>
-        <div className="flex items-center gap-0.5">
-          {onRefresh && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 w-5 p-0"
-              onClick={onRefresh}
-              title="Refresh file tree"
-            >
-              <RefreshCw className="h-3 w-3" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
+              <Plus className="h-3 w-3" />
             </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
-                <Plus className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={handleCreateRootFile}>
-                <FileText className="mr-2 h-3 w-3" />
-                New File
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCreateRootFolder}>
-                <Folder className="mr-2 h-3 w-3" />
-                New Folder
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={handleCreateRootFile}>
+              <FileText className="mr-2 h-3 w-3" />
+              New File
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleCreateRootFolder}>
+              <Folder className="mr-2 h-3 w-3" />
+              New Folder
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* File Tree */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {files.length === 0 ? (
           <div className="p-4 text-xs text-muted-foreground">
-            No files in ~/stuff. Create a new file or folder to get started.
+            No files. Create a new file to get started.
           </div>
         ) : (
           files.map((item) => (
@@ -306,10 +241,20 @@ export const FileTree = memo(function FileTree({
               depth={0}
               activeFileId={activeFileId}
               onFileSelect={onFileSelect}
-              onRefresh={onRefresh}
             />
           ))
         )}
+      </div>
+
+      {/* Footer: History tab */}
+      <div className="shrink-0 border-t border-sidebar-border">
+        <button
+          onClick={onShowHistory}
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          Version History
+        </button>
       </div>
     </div>
   )

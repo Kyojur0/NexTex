@@ -222,6 +222,77 @@ export const AdvancedSettings = memo(function AdvancedSettings({
             </div>
           </div>
 
+          {/* AI Settings */}
+          <div className="space-y-4 border-t pt-4">
+            <h3 className="text-sm font-semibold">AI Assistant</h3>
+            <p className="text-xs text-muted-foreground">
+              Choose the model powering the AI Spotlight (Cmd+K). Use the Vercel AI Gateway models below.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-provider">Provider</Label>
+              <Select
+                value={settings.aiProvider}
+                onValueChange={(v) => {
+                  const defaults: Record<string, string> = {
+                    openai: "openai/gpt-4o-mini",
+                    anthropic: "anthropic/claude-3-5-haiku",
+                    google: "google/gemini-2.0-flash",
+                    xai: "xai/grok-3-mini",
+                  }
+                  setSettings({ aiProvider: v as any, aiModel: defaults[v] || defaults.openai })
+                }}
+              >
+                <SelectTrigger id="ai-provider">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="google">Google</SelectItem>
+                  <SelectItem value="xai">xAI (Grok)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-model">Model</Label>
+              <Select value={settings.aiModel} onValueChange={(v) => setSettings({ aiModel: v })}>
+                <SelectTrigger id="ai-model">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {settings.aiProvider === "openai" && (
+                    <>
+                      <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini (fast)</SelectItem>
+                      <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
+                      <SelectItem value="openai/gpt-5">GPT-5</SelectItem>
+                    </>
+                  )}
+                  {settings.aiProvider === "anthropic" && (
+                    <>
+                      <SelectItem value="anthropic/claude-3-5-haiku">Claude 3.5 Haiku (fast)</SelectItem>
+                      <SelectItem value="anthropic/claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                      <SelectItem value="anthropic/claude-opus-4.6">Claude Opus 4.6</SelectItem>
+                    </>
+                  )}
+                  {settings.aiProvider === "google" && (
+                    <>
+                      <SelectItem value="google/gemini-2.0-flash">Gemini 2.0 Flash (fast)</SelectItem>
+                      <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                    </>
+                  )}
+                  {settings.aiProvider === "xai" && (
+                    <>
+                      <SelectItem value="xai/grok-3-mini">Grok 3 Mini (fast)</SelectItem>
+                      <SelectItem value="xai/grok-3">Grok 3</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Compiler Settings */}
           <div className="space-y-4 border-t pt-4">
             <h3 className="text-sm font-semibold">Compiler</h3>
@@ -252,7 +323,7 @@ export const AdvancedSettings = memo(function AdvancedSettings({
             </div>
 
             <div className="flex items-center justify-between">
-              <Label htmlFor="build-on-save">Auto Compile</Label>
+              <Label htmlFor="build-on-save">Build on Save</Label>
               <Switch
                 id="build-on-save"
                 checked={settings.buildOnSave}

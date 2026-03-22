@@ -5,7 +5,6 @@ export interface FileItem {
   id: string
   name: string
   type: 'file' | 'folder'
-  path?: string
   children?: FileItem[]
   isMain?: boolean
   content?: string
@@ -20,6 +19,8 @@ export interface EditorSettings {
   compiler: 'pdflatex' | 'xetex' | 'luatex'
   colorPalette: 'monochrome' | 'blue' | 'emerald' | 'warm' | 'minimal'
   enableSyntaxHighlight: boolean
+  aiModel: string
+  aiProvider: 'openai' | 'anthropic' | 'google' | 'xai'
 }
 
 export interface FileOperation {
@@ -47,6 +48,9 @@ interface EditorStore {
   showBuildLog: boolean
   showTemplateModal: boolean
   showSettings: boolean
+  showPreview: boolean
+  showHistory: boolean
+  showAISpotlight: boolean
   sidebarWidth: number
   isDragging: boolean
   
@@ -73,6 +77,9 @@ interface EditorStore {
   setShowBuildLog: (value: boolean) => void
   setShowTemplateModal: (value: boolean) => void
   setShowSettings: (value: boolean) => void
+  setShowPreview: (value: boolean) => void
+  setShowHistory: (value: boolean) => void
+  setShowAISpotlight: (value: boolean) => void
   setSidebarWidth: (width: number) => void
   setIsDragging: (value: boolean) => void
   setSettings: (settings: Partial<EditorSettings>) => void
@@ -99,9 +106,12 @@ export const useEditorStore = create<EditorStore>()(
       isModified: false,
       isBuilding: false,
       hasError: false,
-      showBuildLog: true,
+      showBuildLog: false,
       showTemplateModal: false,
       showSettings: false,
+      showPreview: true,
+      showHistory: false,
+      showAISpotlight: false,
       sidebarWidth: 240,
       isDragging: false,
       buildLogs: [],
@@ -115,6 +125,8 @@ export const useEditorStore = create<EditorStore>()(
         compiler: 'pdflatex',
         colorPalette: 'monochrome',
         enableSyntaxHighlight: false,
+        aiModel: 'openai/gpt-4o-mini',
+        aiProvider: 'openai',
       },
       
       // Actions
@@ -126,6 +138,9 @@ export const useEditorStore = create<EditorStore>()(
       setShowBuildLog: (value) => set({ showBuildLog: value }),
       setShowTemplateModal: (value) => set({ showTemplateModal: value }),
       setShowSettings: (value) => set({ showSettings: value }),
+      setShowPreview: (value) => set({ showPreview: value }),
+      setShowHistory: (value) => set({ showHistory: value }),
+      setShowAISpotlight: (value) => set({ showAISpotlight: value }),
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       setIsDragging: (value) => set({ isDragging: value }),
       setSettings: (newSettings) =>
