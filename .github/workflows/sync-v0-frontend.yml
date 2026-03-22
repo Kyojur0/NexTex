@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout monorepo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Checkout v0 design repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: Kyojur0/v0-nextex-design
           path: v0-src
@@ -50,7 +50,7 @@ jobs:
             "v0-src/" "frontend/"
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8.1.0
         with:
           commit-message: "chore(frontend): sync from v0-nextex-design"
           title: "Sync frontend from v0-nextex-design"
