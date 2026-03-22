@@ -4,7 +4,7 @@ import { memo, useRef, useEffect, useState, useCallback } from "react"
 import { cn } from "@/lib/utils"
 
 interface ResizablePanelsProps {
-  children: [React.ReactNode, React.ReactNode | false | null | undefined]
+  children: [React.ReactNode, React.ReactNode]
   initialRatio?: number // 0-1, where 0.5 = 50/50 split
   direction?: "horizontal" | "vertical"
   minSize?: number
@@ -60,7 +60,6 @@ export const ResizablePanels = memo(function ResizablePanels({
   }, [isDragging, direction, minSize])
 
   const isVertical = direction === "vertical"
-  const hasSecondPanel = !!children[1]
 
   return (
     <div
@@ -73,45 +72,31 @@ export const ResizablePanels = memo(function ResizablePanels({
     >
       {/* First Panel */}
       <div
-        style={
-          !hasSecondPanel
-            ? { flex: 1 }
-            : isVertical
-            ? { height: `${ratio * 100}%` }
-            : { width: `${ratio * 100}%` }
-        }
-        className="overflow-hidden flex flex-col min-h-0 min-w-0"
+        style={isVertical ? { height: `${ratio * 100}%` } : { width: `${ratio * 100}%` }}
+        className="overflow-hidden"
       >
         {children[0]}
       </div>
 
       {/* Divider */}
-      {hasSecondPanel && (
-        <div
-          onMouseDown={handleMouseDown}
-          className={cn(
-            "bg-border hover:bg-muted-foreground/30 transition-colors shrink-0",
-            isVertical
-              ? "h-1 w-full cursor-row-resize"
-              : "w-1 h-full cursor-col-resize",
-            isDragging && "bg-muted-foreground/50"
-          )}
-        />
-      )}
+      <div
+        onMouseDown={handleMouseDown}
+        className={cn(
+          "bg-border hover:bg-muted-foreground/30 transition-colors",
+          isVertical
+            ? "h-1 w-full cursor-row-resize"
+            : "w-1 h-full cursor-col-resize",
+          isDragging && "bg-muted-foreground/50"
+        )}
+      />
 
       {/* Second Panel */}
-      {hasSecondPanel && (
-        <div
-          style={
-            isVertical
-              ? { height: `${(1 - ratio) * 100}%` }
-              : { width: `${(1 - ratio) * 100}%` }
-          }
-          className="overflow-hidden flex flex-col min-h-0 min-w-0"
-        >
-          {children[1]}
-        </div>
-      )}
+      <div
+        style={isVertical ? { height: `${(1 - ratio) * 100}%` } : { width: `${(1 - ratio) * 100}%` }}
+        className="overflow-hidden"
+      >
+        {children[1]}
+      </div>
     </div>
   )
 })
