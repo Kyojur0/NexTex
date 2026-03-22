@@ -49,6 +49,9 @@ jobs:
             --exclude "lib/api.ts" \
             "v0-src/" "frontend/"
 
+          # Never commit the checked-out source folder into the monorepo.
+          rm -rf v0-src
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@v8.1.0
         with:
