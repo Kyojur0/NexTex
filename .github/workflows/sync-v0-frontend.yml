@@ -1,0 +1,64 @@
+name: Sync v0 Frontend into Monorepo
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [v0_frontend_update]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-v0-frontend
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout v0 design repo
+        uses: actions/checkout@v4
+        with:
+          repository: Kyojur0/v0-nextex-design
+          path: v0-src
+          fetch-depth: 1
+
+      - name: Sync v0 repo into frontend/
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p frontend
+
+          # Mirror the v0 repo into NexTex/frontend, but keep the monorepo's
+          # integration seam intact (we own api.ts in this repo).
+          rsync -a --delete \
+            --exclude ".git/" \
+            --exclude ".github/" \
+            --exclude "node_modules/" \
+            --exclude ".next/" \
+            --exclude ".vercel/" \
+            --exclude ".env" \
+            --exclude ".env.*" \
+            --exclude "lib/api.ts" \
+            "v0-src/" "frontend/"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(frontend): sync from v0-nextex-design"
+          title: "Sync frontend from v0-nextex-design"
+          body: |
+            Automated sync from `Kyojur0/v0-nextex-design` into `frontend/`.
+
+            Notes:
+            - Keeps `frontend/lib/api.ts` unchanged (integration seam owned by monorepo).
+            - Excludes build/deps artifacts (`node_modules`, `.next`, `.vercel`, `.env*`).
+          branch: "bot/v0-sync"
+          delete-branch: true
