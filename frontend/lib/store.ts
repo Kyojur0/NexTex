@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import * as api from './api'
 
 export interface FileItem {
   id: string
   name: string
   type: 'file' | 'folder'
+  path: string
   children?: FileItem[]
-  isMain?: boolean
-  content?: string
 }
 
 export interface EditorSettings {
@@ -23,27 +23,50 @@ export interface EditorSettings {
   aiProvider: 'openai' | 'anthropic' | 'google' | 'xai'
 }
 
-export interface FileOperation {
-  id: string
-  type: 'rename' | 'delete' | 'create'
-  itemId?: string
-  oldName?: string
-  newName?: string
-  parentId?: string
+function apiNodeToFileItem(node: api.FileNode): FileItem {
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    path: node.path,
+    children: node.children?.map(apiNodeToFileItem),
+  }
+}
+
+function pathFromId(id: string): string {
+  if (id.startsWith('file-')) return id.slice(5)
+  if (id.startsWith('folder-')) return id.slice(7)
+  return id
+}
+
+function findFilePath(items: FileItem[], id: string): string | null {
+  for (const item of items) {
+    if (item.id === id) return item.path
+    if (item.children) {
+      const found = findFilePath(item.children, id)
+      if (found) return found
+    }
+  }
+  return null
 }
 
 interface EditorStore {
+  // Workspace
+  workspaceRoot: string
+  trustedLocalMode: boolean
+
   // File Management
   files: FileItem[]
   activeFileId: string | null
+  activeFilePath: string | null
   projectName: string
-  
+
   // Editor State
   content: string
   isModified: boolean
   isBuilding: boolean
   hasError: boolean
-  
+
   // UI State
   showBuildLog: boolean
   showTemplateModal: boolean
@@ -53,10 +76,10 @@ interface EditorStore {
   showAISpotlight: boolean
   sidebarWidth: number
   isDragging: boolean
-  
+
   // Settings
   settings: EditorSettings
-  
+
   // Build State
   buildLogs: Array<{
     type: 'info' | 'warning' | 'error' | 'success'
@@ -64,12 +87,12 @@ interface EditorStore {
     line?: number
     timestamp: string
   }>
-  
+  pdfUrl: string | null
+
   // Recent Files
   recentFiles: string[]
-  
-  // Actions
-  setActiveFile: (id: string | null, content: string) => void
+
+  // Synchronous Actions
   setContent: (content: string) => void
   setIsModified: (value: boolean) => void
   setIsBuilding: (value: boolean) => void
@@ -83,24 +106,36 @@ interface EditorStore {
   setSidebarWidth: (width: number) => void
   setIsDragging: (value: boolean) => void
   setSettings: (settings: Partial<EditorSettings>) => void
+  setBuildLogs: (logs: EditorStore['buildLogs']) => void
+  setPdfUrl: (url: string | null) => void
   setFiles: (files: FileItem[]) => void
   setProjectName: (name: string) => void
-  setBuildLogs: (logs: EditorStore['buildLogs']) => void
+  setActiveFile: (id: string | null, content: string) => void
   addRecentFile: (filePath: string) => void
-  
-  // File Operations
-  renameFile: (id: string, newName: string) => void
-  deleteFile: (id: string) => void
-  createFile: (parentId: string | null, name: string, type: 'file' | 'folder') => void
-  updateFileContent: (id: string, content: string) => void
+  clearActiveFile: () => void
+
+  // Async Actions
+  loadWorkspace: () => Promise<void>
+  selectWorkspace: (path: string, trusted: boolean) => Promise<void>
+  resetWorkspace: () => Promise<void>
+  refreshFiles: () => Promise<void>
+  openFile: (id: string, path: string) => Promise<void>
+  saveActiveFile: () => Promise<void>
+  renameFile: (id: string, newName: string) => Promise<void>
+  deleteFile: (id: string) => Promise<void>
+  createFile: (parentId: string | null, name: string, type: 'file' | 'folder') => Promise<void>
+  compileActiveFile: () => Promise<void>
 }
 
 export const useEditorStore = create<EditorStore>()(
   persist(
     (set, get) => ({
       // Initial State
+      workspaceRoot: '',
+      trustedLocalMode: false,
       files: [],
       activeFileId: null,
+      activeFilePath: null,
       projectName: 'Untitled Project',
       content: '',
       isModified: false,
@@ -115,6 +150,7 @@ export const useEditorStore = create<EditorStore>()(
       sidebarWidth: 240,
       isDragging: false,
       buildLogs: [],
+      pdfUrl: null,
       recentFiles: [],
       settings: {
         fontSize: 14,
@@ -128,11 +164,10 @@ export const useEditorStore = create<EditorStore>()(
         aiModel: 'openai/gpt-4o-mini',
         aiProvider: 'openai',
       },
-      
-      // Actions
-      setActiveFile: (id, content) => set({ activeFileId: id, content }),
+
       setContent: (content) => set({ content }),
       setIsModified: (value) => set({ isModified: value }),
+      setActiveFile: (id, content) => set({ activeFileId: id, content, isModified: false }),
       setIsBuilding: (value) => set({ isBuilding: value }),
       setHasError: (value) => set({ hasError: value }),
       setShowBuildLog: (value) => set({ showBuildLog: value }),
@@ -147,9 +182,11 @@ export const useEditorStore = create<EditorStore>()(
         set((state) => ({
           settings: { ...state.settings, ...newSettings },
         })),
+      setBuildLogs: (logs) => set({ buildLogs: logs }),
+      setPdfUrl: (url) => set({ pdfUrl: url }),
       setFiles: (files) => set({ files }),
       setProjectName: (name) => set({ projectName: name }),
-      setBuildLogs: (logs) => set({ buildLogs: logs }),
+      clearActiveFile: () => set({ activeFileId: null, activeFilePath: null, content: '', isModified: false }),
       addRecentFile: (filePath) =>
         set((state) => ({
           recentFiles: [
@@ -157,88 +194,132 @@ export const useEditorStore = create<EditorStore>()(
             ...state.recentFiles.filter((f) => f !== filePath),
           ].slice(0, 10),
         })),
-      
-      // File Operations
-      renameFile: (id, newName) => {
-        const state = get()
-        const renameInTree = (items: FileItem[]): FileItem[] => {
-          return items.map((item) => {
-            if (item.id === id) {
-              return { ...item, name: newName }
-            }
-            if (item.children) {
-              return { ...item, children: renameInTree(item.children) }
-            }
-            return item
-          })
-        }
-        set({ files: renameInTree(state.files) })
-      },
-      
-      deleteFile: (id) => {
-        const state = get()
-        const deleteFromTree = (items: FileItem[]): FileItem[] => {
-          return items
-            .filter((item) => item.id !== id)
-            .map((item) => {
-              if (item.children) {
-                return { ...item, children: deleteFromTree(item.children) }
-              }
-              return item
-            })
-        }
-        const newFiles = deleteFromTree(state.files)
+
+      // Async Actions
+      loadWorkspace: async () => {
+        const info = await api.getWorkspace()
         set({
-          files: newFiles,
-          activeFileId: state.activeFileId === id ? null : state.activeFileId,
+          workspaceRoot: info.workspace_root,
+          trustedLocalMode: info.trusted_local_mode,
         })
+        await get().refreshFiles()
       },
-      
-      createFile: (parentId, name, type) => {
-        const state = get()
-        const newId = `${type}-${Date.now()}`
-        const newItem: FileItem = {
-          id: newId,
-          name,
-          type,
-          ...(type === 'folder' && { children: [] }),
-        }
-        
-        const addToTree = (items: FileItem[]): FileItem[] => {
-          if (!parentId) {
-            return [...items, newItem]
-          }
-          return items.map((item) => {
-            if (item.id === parentId && item.type === 'folder') {
-              return {
-                ...item,
-                children: [...(item.children || []), newItem],
-              }
-            }
-            if (item.children) {
-              return { ...item, children: addToTree(item.children) }
-            }
-            return item
-          })
-        }
-        
-        set({ files: addToTree(state.files) })
+
+      selectWorkspace: async (path, trusted) => {
+        const info = await api.selectWorkspace(path, trusted)
+        set({
+          workspaceRoot: info.workspace_root,
+          trustedLocalMode: info.trusted_local_mode,
+          activeFileId: null,
+          activeFilePath: null,
+          content: '',
+          isModified: false,
+          pdfUrl: null,
+        })
+        await get().refreshFiles()
       },
-      
-      updateFileContent: (id, content) => {
-        const state = get()
-        const updateInTree = (items: FileItem[]): FileItem[] => {
-          return items.map((item) => {
-            if (item.id === id) {
-              return { ...item, content }
-            }
-            if (item.children) {
-              return { ...item, children: updateInTree(item.children) }
-            }
-            return item
-          })
+
+      resetWorkspace: async () => {
+        const info = await api.resetWorkspace()
+        set({
+          workspaceRoot: info.workspace_root,
+          trustedLocalMode: info.trusted_local_mode,
+          activeFileId: null,
+          activeFilePath: null,
+          content: '',
+          isModified: false,
+          pdfUrl: null,
+        })
+        await get().refreshFiles()
+      },
+
+      refreshFiles: async () => {
+        const tree = await api.fetchFileTree('')
+        set({ files: tree.map(apiNodeToFileItem) })
+      },
+
+      openFile: async (id, path) => {
+        const content = await api.readFile(path)
+        set({
+          activeFileId: id,
+          activeFilePath: path,
+          content,
+          isModified: false,
+        })
+        get().addRecentFile(path)
+      },
+
+      saveActiveFile: async () => {
+        const { activeFilePath, content } = get()
+        if (!activeFilePath) return
+        await api.writeFile(activeFilePath, content)
+        set({ isModified: false })
+      },
+
+      renameFile: async (id, newName) => {
+        const { files, activeFileId, activeFilePath } = get()
+        const oldPath = findFilePath(files, id) || pathFromId(id)
+        const parentPath = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
+        const newPath = parentPath ? `${parentPath}/${newName}` : newName
+        await api.renameItem(oldPath, newPath)
+        await get().refreshFiles()
+        // Update active file if it was the renamed one
+        if (activeFileId === id) {
+          const newId = id.startsWith('folder-') ? `folder-${newPath}` : `file-${newPath}`
+          set({ activeFileId: newId, activeFilePath: newPath })
         }
-        set({ files: updateInTree(state.files) })
+      },
+
+      deleteFile: async (id) => {
+        const { files, activeFileId } = get()
+        const path = findFilePath(files, id) || pathFromId(id)
+        await api.deleteItem(path)
+        await get().refreshFiles()
+        if (activeFileId === id) {
+          set({ activeFileId: null, activeFilePath: null, content: '', isModified: false })
+        }
+      },
+
+      createFile: async (parentId, name, type) => {
+        const { files } = get()
+        const parentPath = parentId ? (findFilePath(files, parentId) || pathFromId(parentId)) : ''
+        const path = parentPath ? `${parentPath}/${name}` : name
+        await api.createItem(path, type)
+        await get().refreshFiles()
+      },
+
+      compileActiveFile: async () => {
+        const { activeFilePath, settings } = get()
+        if (!activeFilePath) return
+        set({ isBuilding: true, showBuildLog: true, pdfUrl: null })
+        const ts = new Date().toLocaleTimeString()
+        set({
+          buildLogs: [
+            { type: 'info', message: `Starting ${settings.compiler} compilation...`, timestamp: ts },
+            { type: 'info', message: `Processing ${activeFilePath}`, timestamp: ts },
+          ],
+        })
+        try {
+          const result = await api.compileLaTeX(activeFilePath, settings.compiler)
+          const logs = result.logs.map((l) => ({
+            type: l.type as 'info' | 'warning' | 'error' | 'success',
+            message: l.message,
+            timestamp: new Date().toLocaleTimeString(),
+          }))
+          set({
+            buildLogs: logs,
+            pdfUrl: result.pdf_available ? api.getPdfUrl(result.build_id) : null,
+          })
+        } catch (err: any) {
+          set({
+            buildLogs: [
+              ...get().buildLogs,
+              { type: 'error', message: err?.message || 'Compilation failed', timestamp: new Date().toLocaleTimeString() },
+            ],
+          })
+        } finally {
+          set({ isBuilding: false })
+        }
       },
     }),
     {

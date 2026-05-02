@@ -15,56 +15,147 @@ import { AISpotlight } from "@/components/editor/ai-spotlight"
 import { ColorPaletteProvider } from "@/lib/color-palette-context"
 import { useEditorStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { AlertTriangle, FolderOpen } from "lucide-react"
+import * as api from "@/lib/api"
 
-const SAMPLE_RESUME = `\\documentclass{article}
-\\usepackage[margin=0.5in]{geometry}
-\\usepackage{hyperref}
-\\usepackage{enumitem}
+function findFirstTexFile(nodes: api.FileNode[]): api.FileNode | null {
+  for (const node of nodes) {
+    if (node.type === "file" && node.name.endsWith(".tex")) return node
+    if (node.children) {
+      const found = findFirstTexFile(node.children)
+      if (found) return found
+    }
+  }
+  return null
+}
 
-\\begin{document}
+function OpenFolderDialog({
+  open,
+  onOpenChange,
+  onSelect,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (path: string, trusted: boolean) => Promise<void>
+}) {
+  const [path, setPath] = useState("")
+  const [needsTrust, setNeedsTrust] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-\\begin{center}
-  {\\LARGE \\textbf{John Doe}} \\\\[4pt]
-  john@example.com $\\cdot$ (555) 123-4567 $\\cdot$ linkedin.com/in/johndoe
-\\end{center}
+  const handleTrySelect = async (trusted: boolean) => {
+    setLoading(true)
+    setError(null)
+    try {
+      await onSelect(path.trim(), trusted)
+      setPath("")
+      setNeedsTrust(false)
+      onOpenChange(false)
+    } catch (err: any) {
+      const msg = err?.message || ""
+      if (!trusted && msg.toLowerCase().includes("trusted")) {
+        setNeedsTrust(true)
+      } else {
+        setError(msg || "Failed to open folder")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
-\\section*{PROFESSIONAL SUMMARY}
-Experienced software engineer with 5+ years of expertise in full-stack development, cloud architecture, and team leadership. Passionate about building scalable systems and mentoring engineers.
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!path.trim()) return
+    handleTrySelect(false)
+  }
 
-\\section*{EXPERIENCE}
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setNeedsTrust(false); setError(null); setPath("") } }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderOpen className="h-4 w-4" />
+            Open Local Folder
+          </DialogTitle>
+          <DialogDescription>
+            Enter the absolute path to a local folder you want to edit.
+          </DialogDescription>
+        </DialogHeader>
 
-\\textbf{Senior Software Engineer} \\hfill Jan 2021 -- Present \\\\
-\\textit{Tech Company Inc., San Francisco, CA}
-\\begin{itemize}[leftmargin=*,nosep]
-  \\item Led development of microservices architecture handling 10M+ requests/day
-  \\item Mentored 3 junior developers and conducted 50+ technical interviews
-  \\item Reduced system latency by 40\\% through caching and query optimization
-\\end{itemize}
-
-\\textbf{Software Engineer} \\hfill Jun 2018 -- Dec 2020 \\\\
-\\textit{Startup Co., New York, NY}
-\\begin{itemize}[leftmargin=*,nosep]
-  \\item Built React dashboard used by 10,000+ daily active users
-  \\item Designed and implemented REST API with Node.js and PostgreSQL
-\\end{itemize}
-
-\\section*{EDUCATION}
-
-\\textbf{Bachelor of Science in Computer Science} \\hfill May 2018 \\\\
-\\textit{State University}
-
-\\section*{SKILLS}
-
-\\textbf{Languages:} Python, JavaScript, TypeScript, Go, SQL \\\\
-\\textbf{Frameworks:} React, Node.js, FastAPI, Next.js \\\\
-\\textbf{Tools:} Docker, AWS, PostgreSQL, Redis, Git
-
-\\end{document}`
+        {!needsTrust ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="folder-path">Folder path</Label>
+              <Input
+                id="folder-path"
+                placeholder="/Users/you/Documents/project"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading || !path.trim()}>
+                {loading ? "Opening..." : "Open Folder"}
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-md bg-yellow-500/10 border border-yellow-500/20 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                    Trust Required
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This folder is outside the default workspace. Enabling trusted local mode allows the app to read and write files in this location. Only proceed if you trust this folder.
+                  </p>
+                </div>
+              </div>
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setNeedsTrust(false)}>
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleTrySelect(true)}
+                disabled={loading}
+              >
+                {loading ? "Opening..." : "Trust and Open"}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function EditorInner() {
+  const store = useEditorStore()
   const {
     files,
     activeFileId,
+    activeFilePath,
     content,
     isModified,
     isBuilding,
@@ -78,10 +169,10 @@ function EditorInner() {
     isDragging,
     settings,
     buildLogs,
-    setActiveFile,
+    pdfUrl,
+    workspaceRoot,
     setContent,
     setIsModified,
-    setIsBuilding,
     setShowBuildLog,
     setShowTemplateModal,
     setShowSettings,
@@ -90,34 +181,44 @@ function EditorInner() {
     setShowAISpotlight,
     setSidebarWidth,
     setIsDragging,
-    setFiles,
-    setBuildLogs,
-  } = useEditorStore()
+    loadWorkspace,
+    selectWorkspace,
+    openFile,
+    saveActiveFile,
+    compileActiveFile,
+    refreshFiles,
+  } = store
 
   const [mounted, setMounted] = useState(false)
-  // Horizontal split ratio between editor and preview (0.55 default = editor takes 55%)
+  const [showOpenFolder, setShowOpenFolder] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [splitRatio, setSplitRatio] = useState(0.55)
   const splitDragging = useRef(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
 
+  // Initialize on mount
   useEffect(() => {
     setMounted(true)
-    if (files.length === 0) {
-      setFiles([
-        {
-          id: "folder-1",
-          name: "my-resume",
-          type: "folder",
-          children: [
-            { id: "file-1", name: "resume.tex", type: "file", isMain: true, content: SAMPLE_RESUME },
-            { id: "file-2", name: "sections.tex", type: "file", content: "% Additional sections\n" },
-            { id: "file-3", name: "style.sty", type: "file", content: "% Custom style definitions\n" },
-          ],
-        },
-      ])
-      setActiveFile("file-1", SAMPLE_RESUME)
+    let cancelled = false
+    async function init() {
+      try {
+        await loadWorkspace()
+        if (cancelled) return
+        // Open first .tex file if available
+        const tree = await api.fetchFileTree("")
+        const firstTex = findFirstTexFile(tree)
+        if (firstTex && !cancelled) {
+          await openFile(firstTex.id, firstTex.path)
+        }
+      } catch (e) {
+        console.error("Failed to initialize workspace", e)
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
     }
-  }, [files.length, setFiles, setActiveFile])
+    init()
+    return () => { cancelled = true }
+  }, [loadWorkspace, openFile])
 
   // Sidebar resize
   const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
@@ -161,54 +262,48 @@ function EditorInner() {
     }
   }, [])
 
-  const handleFileSelect = useCallback((fileId: string) => {
-    const findFileContent = (items: typeof files): string | null => {
-      for (const item of items) {
-        if (item.id === fileId) return item.content || ""
-        if (item.children) {
-          const found = findFileContent(item.children)
-          if (found !== null) return found
-        }
-      }
-      return null
+  // File select with unsaved guard
+  const handleFileSelect = useCallback(async (fileId: string, filePath: string) => {
+    if (isModified && activeFilePath) {
+      // Auto-save on switch to prevent silent loss
+      await saveActiveFile()
     }
-    const fileContent = findFileContent(files)
-    if (fileContent !== null) setActiveFile(fileId, fileContent)
-  }, [files, setActiveFile])
+    await openFile(fileId, filePath)
+  }, [isModified, activeFilePath, saveActiveFile, openFile])
 
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent)
     setIsModified(true)
   }, [setContent, setIsModified])
 
-  const handleBuild = useCallback(() => {
-    setIsBuilding(true)
-    setShowBuildLog(true)
-    const ts = new Date().toLocaleTimeString()
-    const fileName = activeFileId ? (files.flatMap(f => f.children || []).find(f => f.id === activeFileId)?.name || "document") : "document"
-    setBuildLogs([
-      { type: "info", message: `Starting ${settings.compiler} compilation...`, timestamp: ts },
-      { type: "info", message: `Processing ${fileName}`, timestamp: ts },
-      { type: "info", message: "Running pass 1/2...", timestamp: ts },
-      { type: "info", message: "Running pass 2/2...", timestamp: ts },
-    ])
-    setTimeout(() => {
-      const ts2 = new Date().toLocaleTimeString()
-      setBuildLogs([
-        { type: "info", message: `Starting ${settings.compiler} compilation...`, timestamp: ts },
-        { type: "info", message: `Processing ${fileName}`, timestamp: ts },
-        { type: "success", message: "Compiled successfully in 1.4s (1 page, 138KB)", timestamp: ts2 },
-      ])
-      setIsBuilding(false)
-    }, 1800)
-  }, [setIsBuilding, setShowBuildLog, setBuildLogs, activeFileId, files, settings.compiler])
+  const handleSave = useCallback(async () => {
+    await saveActiveFile()
+    if (settings.buildOnSave && activeFilePath) {
+      await compileActiveFile()
+    }
+  }, [saveActiveFile, settings.buildOnSave, activeFilePath, compileActiveFile])
 
-  const handleSave = useCallback(() => {
-    setIsModified(false)
-  }, [setIsModified])
+  const handleBuild = useCallback(async () => {
+    if (!activeFilePath) return
+    if (isModified) {
+      await saveActiveFile()
+    }
+    await compileActiveFile()
+  }, [activeFilePath, isModified, saveActiveFile, compileActiveFile])
+
+  // Autosave
+  useEffect(() => {
+    if (!settings.autoSave || !isModified || !activeFilePath) return
+    const timer = setTimeout(() => {
+      saveActiveFile()
+      if (settings.buildOnSave) {
+        compileActiveFile()
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [content, isModified, activeFilePath, settings.autoSave, settings.buildOnSave, saveActiveFile, compileActiveFile])
 
   const handleJumpToLine = useCallback((line: number) => {
-    // Broadcast to the editor to jump to that line
     window.dispatchEvent(new CustomEvent("editor:jump-to-line", { detail: { line } }))
   }, [])
 
@@ -225,15 +320,12 @@ function EditorInner() {
 
   if (!mounted) return null
 
-  const activeFileName = (() => {
-    const flat = (items: typeof files): typeof files => items.flatMap(i => i.type === "folder" ? flat(i.children || []) : [i])
-    return flat(files).find(f => f.id === activeFileId)?.name || "Untitled"
-  })()
+  const activeFileName = activeFilePath ? activeFilePath.split("/").pop() || "Untitled" : "Untitled"
 
   return (
     <LayoutWrapper>
       <Header
-        onOpenFolder={() => {}}
+        onOpenFolder={() => setShowOpenFolder(true)}
         onOpenFile={() => {}}
         onSave={handleSave}
         onSaveAs={() => {}}
@@ -271,16 +363,22 @@ function EditorInner() {
         <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
           {/* Code editor */}
           <div style={{ width: showPreview ? `${splitRatio * 100}%` : "100%" }} className="flex flex-col overflow-hidden transition-all duration-200 p-3">
-            <EnhancedCodeEditor
-              content={content}
-              onChange={handleContentChange}
-              fileName={activeFileName}
-              fontSize={settings.fontSize}
-              tabSize={settings.tabSize}
-              enableSyntaxHighlight={settings.enableSyntaxHighlight}
-              wordWrap={settings.wordWrap}
-              onAISpotlight={() => setShowAISpotlight(true)}
-            />
+            {isLoading ? (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                Loading workspace...
+              </div>
+            ) : (
+              <EnhancedCodeEditor
+                content={content}
+                onChange={handleContentChange}
+                fileName={activeFileName}
+                fontSize={settings.fontSize}
+                tabSize={settings.tabSize}
+                enableSyntaxHighlight={settings.enableSyntaxHighlight}
+                wordWrap={settings.wordWrap}
+                onAISpotlight={() => setShowAISpotlight(true)}
+              />
+            )}
           </div>
 
           {/* Horizontal divider (only when preview visible) */}
@@ -296,6 +394,7 @@ function EditorInner() {
             <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="flex flex-col overflow-hidden p-3">
               <PdfPreview
                 fileName={activeFileName.replace(".tex", ".pdf")}
+                pdfUrl={pdfUrl}
                 isBuilding={isBuilding}
               />
             </div>
@@ -329,13 +428,20 @@ function EditorInner() {
       {/* Modals */}
       <TemplateModal open={showTemplateModal} onOpenChange={setShowTemplateModal} />
       <AdvancedSettings open={showSettings} onOpenChange={setShowSettings} />
+      <OpenFolderDialog
+        open={showOpenFolder}
+        onOpenChange={setShowOpenFolder}
+        onSelect={async (path, trusted) => {
+          await selectWorkspace(path, trusted)
+        }}
+      />
     </LayoutWrapper>
   )
 }
 
 export default function EditorPage() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem suppressHydrationWarning>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
       <ColorPaletteProvider>
         <EditorInner />
       </ColorPaletteProvider>

@@ -2,7 +2,7 @@
 
 import { memo, useCallback } from "react"
 import { useTheme } from "next-themes"
-import { useEditorStore } from "@/lib/store"
+import { useEditorStore, FileItem } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -32,6 +32,7 @@ import {
   PanelRight,
   PanelRightClose,
   Sparkles,
+  Folder,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -71,6 +72,13 @@ const ThemeSelector = memo(function ThemeSelector() {
   )
 })
 
+function formatWorkspacePath(path: string): string {
+  if (!path) return ""
+  const parts = path.split(/[/\\]/)
+  if (parts.length <= 2) return path
+  return ".../" + parts.slice(-2).join("/")
+}
+
 export function Header({
   onOpenFolder,
   onOpenFile,
@@ -82,7 +90,12 @@ export function Header({
   onTogglePreview,
   showPreview,
 }: HeaderProps) {
-  const { projectName, isModified, isBuilding, setShowAISpotlight } = useEditorStore()
+  const projectName = useEditorStore((s) => s.projectName)
+  const isModified = useEditorStore((s) => s.isModified)
+  const isBuilding = useEditorStore((s) => s.isBuilding)
+  const workspaceRoot = useEditorStore((s) => s.workspaceRoot)
+  const trustedLocalMode = useEditorStore((s) => s.trustedLocalMode)
+  const setShowAISpotlight = useEditorStore((s) => s.setShowAISpotlight)
 
   return (
     <header
@@ -93,9 +106,9 @@ export function Header({
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className="flex items-center gap-2 shrink-0">
           <div className="w-5 h-5 rounded bg-foreground flex items-center justify-center">
-            <span className="text-background text-[10px] font-bold leading-none">T</span>
+            <span className="text-background text-[10px] font-bold leading-none">N</span>
           </div>
-          <span className="font-semibold text-sm tracking-tight hidden sm:block">TeXPress</span>
+          <span className="font-semibold text-sm tracking-tight hidden sm:block">NexTex</span>
         </div>
 
         <div className="h-4 w-px bg-border shrink-0" />
@@ -127,8 +140,7 @@ export function Header({
                   <Clock className="mr-2 h-4 w-4" /> Recent Files
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
-                  <DropdownMenuItem><FileText className="mr-2 h-4 w-4" /> resume.tex</DropdownMenuItem>
-                  <DropdownMenuItem><FileText className="mr-2 h-4 w-4" /> cover-letter.tex</DropdownMenuItem>
+                  <RecentFilesList />
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               <DropdownMenuSeparator />
@@ -177,10 +189,21 @@ export function Header({
           </DropdownMenu>
         </nav>
 
-        {/* Project name + modified dot */}
+        {/* Project name + modified dot + workspace */}
         <div className="flex items-center gap-1.5 min-w-0 ml-1">
           <span className="text-xs text-muted-foreground truncate max-w-32">{projectName}</span>
           {isModified && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+          {workspaceRoot && (
+            <div className="hidden md:flex items-center gap-1 ml-2 text-[10px] text-muted-foreground/70">
+              <Folder className="h-3 w-3" />
+              <span title={workspaceRoot} className="truncate max-w-40">
+                {formatWorkspacePath(workspaceRoot)}
+                {trustedLocalMode && (
+                  <span className="ml-1 text-[9px] uppercase tracking-wider text-yellow-500/80">Trusted</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -230,5 +253,49 @@ export function Header({
         </Button>
       </div>
     </header>
+  )
+}
+
+function RecentFilesList() {
+  const recentFiles = useEditorStore((s) => s.recentFiles)
+  const openFile = useEditorStore((s) => s.openFile)
+  const files = useEditorStore((s) => s.files)
+
+  const findIdByPath = (path: string): string | null => {
+    const search = (items: FileItem[]): string | null => {
+      for (const item of items) {
+        if (item.path === path) return item.id
+        if (item.children) {
+          const found = search(item.children)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    return search(files)
+  }
+
+  if (recentFiles.length === 0) {
+    return <DropdownMenuItem disabled>No recent files</DropdownMenuItem>
+  }
+
+  return (
+    <>
+      {recentFiles.map((path) => {
+        const id = findIdByPath(path)
+        return (
+          <DropdownMenuItem
+            key={path}
+            onClick={() => {
+              if (id) openFile(id, path)
+            }}
+            disabled={!id}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            {path.split('/').pop() || path}
+          </DropdownMenuItem>
+        )
+      })}
+    </>
   )
 }

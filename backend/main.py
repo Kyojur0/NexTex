@@ -1,23 +1,32 @@
+"""
+NexTex Backend API
+Production-grade local filesystem + LaTeX compilation backend.
+"""
+
+import json
 import os
-import uuid
 import shutil
 import subprocess
-import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
+
 app = FastAPI(
     title="NexTex API",
     description="Backend API for NexTex – local file system + LaTeX compilation",
-    version="0.1.0",
+    version="1.0.0",
 )
 
-# CORS middleware to allow frontend requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -30,12 +39,13 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration & workspace persistence
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path("/Users/haroonayaz/Desktop/projects/NexTex/backend/stuff")
-# Ensure the base directory exists on startup
-BASE_DIR.mkdir(parents=True, exist_ok=True)
+BACKEND_DIR = Path(__file__).parent.resolve()
+REPO_ROOT = BACKEND_DIR.parent.resolve()
+DEFAULT_ROOT = (REPO_ROOT / "tex_files").resolve()
+CONFIG_PATH = BACKEND_DIR / ".nextex_config.json"
 
 COMPILER_MAP = {
     "pdflatex": "pdflatex",
@@ -43,18 +53,114 @@ COMPILER_MAP = {
     "luatex": "lualatex",
 }
 
-# Keep compiled PDFs in a temp area so the frontend can fetch them
-BUILD_OUTPUT_DIR = Path(tempfile.gettempdir()) / "nextex_builds"
-BUILD_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Subdirectory inside active workspace where builds are stored
+BUILD_SUBDIR = ".nextex_builds"
+MAX_RETAINED_BUILDS = 20
+
+
+def _load_config() -> dict[str, Any]:
+    """Load persisted workspace configuration."""
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_config(config: dict[str, Any]) -> None:
+    """Persist workspace configuration atomically."""
+    tmp_path = CONFIG_PATH.with_suffix(".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+    tmp_path.replace(CONFIG_PATH)
+
+
+def _get_active_workspace() -> Path:
+    """Return the currently active workspace root, ensuring it exists."""
+    cfg = _load_config()
+    active = cfg.get("active_workspace")
+    trusted = cfg.get("trusted_local_mode", False)
+
+    if active:
+        active_path = Path(active).resolve()
+        if active_path.exists() and active_path.is_dir():
+            return active_path
+        # Persisted path is invalid — fall through to default
+
+    # Ensure default root exists
+    DEFAULT_ROOT.mkdir(parents=True, exist_ok=True)
+    _save_config({
+        "active_workspace": str(DEFAULT_ROOT),
+        "trusted_local_mode": False,
+        "source": "default",
+    })
+    return DEFAULT_ROOT
+
+
+def _get_build_output_dir() -> Path:
+    """Return the build output directory inside the active workspace."""
+    workspace = _get_active_workspace()
+    build_dir = workspace / BUILD_SUBDIR
+    build_dir.mkdir(parents=True, exist_ok=True)
+    return build_dir
+
+
+def _is_path_inside(base: Path, candidate: Path) -> bool:
+    """Robust check that candidate is inside base (after resolving symlinks)."""
+    try:
+        candidate.relative_to(base)
+        return True
+    except ValueError:
+        return False
 
 
 def _resolve_safe(relative: str) -> Path:
-    """Resolve a relative path against BASE_DIR and ensure it stays inside."""
+    """Resolve a relative path against the active workspace and ensure it stays inside."""
+    workspace = _get_active_workspace()
     clean = relative.lstrip("/")
-    resolved = (BASE_DIR / clean).resolve()
-    if not str(resolved).startswith(str(BASE_DIR.resolve())):
-        raise HTTPException(status_code=403, detail="Path escapes base directory")
+    # Prevent path traversal via .. even before resolving
+    if ".." in clean.split("/"):
+        raise HTTPException(status_code=403, detail="Path contains forbidden traversal")
+    resolved = (workspace / clean).resolve()
+    if not _is_path_inside(workspace, resolved):
+        raise HTTPException(status_code=403, detail="Path escapes workspace directory")
     return resolved
+
+
+def _to_relative(path: Path) -> str:
+    """Return a path relative to the active workspace."""
+    workspace = _get_active_workspace()
+    try:
+        return path.relative_to(workspace).as_posix()
+    except ValueError:
+        return str(path)
+
+
+# ---------------------------------------------------------------------------
+# Build cleanup
+# ---------------------------------------------------------------------------
+
+def _cleanup_old_builds() -> None:
+    """Remove oldest builds when count exceeds MAX_RETAINED_BUILDS."""
+    build_dir = _get_build_output_dir()
+    try:
+        build_dirs = [d for d in build_dir.iterdir() if d.is_dir()]
+    except OSError:
+        return
+
+    if len(build_dirs) <= MAX_RETAINED_BUILDS:
+        return
+
+    # Sort by modification time (oldest first)
+    build_dirs.sort(key=lambda d: d.stat().st_mtime)
+    to_remove = build_dirs[: len(build_dirs) - MAX_RETAINED_BUILDS]
+    for old in to_remove:
+        try:
+            shutil.rmtree(old)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -71,13 +177,81 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.get("/api/config")
-async def get_config():
-    """Return current base directory and available compilers."""
-    return {
-        "baseDir": str(BASE_DIR),
-        "compilers": list(COMPILER_MAP.keys()),
-    }
+# ---------------------------------------------------------------------------
+# Workspace API
+# ---------------------------------------------------------------------------
+
+class SelectWorkspaceBody(BaseModel):
+    path: str
+    trusted: bool = False
+
+
+class WorkspaceInfo(BaseModel):
+    workspace_root: str
+    trusted_local_mode: bool
+    source: str  # "default" | "user-selected"
+
+
+@app.get("/api/workspace", response_model=WorkspaceInfo)
+async def get_workspace():
+    """Return current workspace metadata."""
+    workspace = _get_active_workspace()
+    cfg = _load_config()
+    return WorkspaceInfo(
+        workspace_root=str(workspace),
+        trusted_local_mode=cfg.get("trusted_local_mode", False),
+        source=cfg.get("source", "default"),
+    )
+
+
+@app.post("/api/workspace/select", response_model=WorkspaceInfo)
+async def select_workspace(body: SelectWorkspaceBody):
+    """Select (and persist) a new active workspace."""
+    requested = Path(body.path).expanduser().resolve()
+    if not requested.exists():
+        raise HTTPException(status_code=404, detail="Path does not exist")
+    if not requested.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    # Determine if this is outside the default root
+    is_default = _is_path_inside(DEFAULT_ROOT, requested) or requested == DEFAULT_ROOT
+
+    if not is_default and not body.trusted:
+        raise HTTPException(
+            status_code=403,
+            detail="Explicit trusted consent required to open folders outside the default root",
+        )
+
+    _save_config({
+        "active_workspace": str(requested),
+        "trusted_local_mode": not is_default,
+        "source": "user-selected",
+    })
+
+    # Ensure build subdir exists
+    (requested / BUILD_SUBDIR).mkdir(parents=True, exist_ok=True)
+
+    return WorkspaceInfo(
+        workspace_root=str(requested),
+        trusted_local_mode=not is_default,
+        source="user-selected",
+    )
+
+
+@app.post("/api/workspace/reset", response_model=WorkspaceInfo)
+async def reset_workspace():
+    """Reset workspace to the default root."""
+    DEFAULT_ROOT.mkdir(parents=True, exist_ok=True)
+    _save_config({
+        "active_workspace": str(DEFAULT_ROOT),
+        "trusted_local_mode": False,
+        "source": "default",
+    })
+    return WorkspaceInfo(
+        workspace_root=str(DEFAULT_ROOT),
+        trusted_local_mode=False,
+        source="default",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +262,7 @@ class FileNode(BaseModel):
     id: str
     name: str
     type: str  # "file" | "folder"
-    path: str  # relative path from BASE_DIR
+    path: str  # relative path from active workspace
     children: Optional[list["FileNode"]] = None
 
 
@@ -101,7 +275,7 @@ def _build_tree(directory: Path, rel_prefix: str = "") -> list[FileNode]:
         return nodes
 
     for entry in entries:
-        # Skip hidden files
+        # Intentionally skip hidden files and the build output directory
         if entry.name.startswith("."):
             continue
 
@@ -129,7 +303,7 @@ def _build_tree(directory: Path, rel_prefix: str = "") -> list[FileNode]:
 
 @app.get("/api/files")
 async def list_files(path: str = ""):
-    """Return the recursive file tree from *path* (relative to BASE_DIR)."""
+    """Return the recursive file tree from *path* (relative to active workspace)."""
     target = _resolve_safe(path)
     if not target.exists():
         raise HTTPException(status_code=404, detail="Directory not found")
@@ -147,10 +321,18 @@ async def read_file(path: str):
         raise HTTPException(status_code=404, detail="File not found")
     if not target.is_file():
         raise HTTPException(status_code=400, detail="Path is not a file")
+    # Reject obviously binary files by extension (defense in depth)
+    BINARY_EXTENSIONS = {
+        ".pdf", ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z",
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico",
+        ".exe", ".dll", ".so", ".dylib", ".bin",
+    }
+    if target.suffix.lower() in BINARY_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Binary files cannot be read as text")
     try:
         content = target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File is not a text file")
+        raise HTTPException(status_code=400, detail="File is not valid UTF-8 text")
     return {"path": path, "content": content}
 
 
@@ -169,7 +351,7 @@ async def write_file(body: WriteFileBody):
 
 
 class CreateItemBody(BaseModel):
-    path: str  # e.g. "project/new-file.tex" or "project/subfolder"
+    path: str
     type: str  # "file" | "folder"
 
 
@@ -182,9 +364,11 @@ async def create_item(body: CreateItemBody):
 
     if body.type == "folder":
         target.mkdir(parents=True, exist_ok=True)
-    else:
+    elif body.type == "file":
         target.parent.mkdir(parents=True, exist_ok=True)
         target.touch()
+    else:
+        raise HTTPException(status_code=400, detail="type must be 'file' or 'folder'")
 
     return {"path": body.path, "type": body.type, "message": "Created"}
 
@@ -230,31 +414,36 @@ async def delete_item(body: DeleteBody):
 # ---------------------------------------------------------------------------
 
 class CompileBody(BaseModel):
-    file_path: str  # relative path to the .tex file inside BASE_DIR
-    compiler: str = "pdflatex"  # pdflatex | xelatex | lualatex
+    file_path: str
+    compiler: str = "pdflatex"
 
 
-@app.post("/api/compile")
+class CompileResult(BaseModel):
+    build_id: str
+    success: bool
+    logs: list[dict[str, str]]
+    pdf_available: bool
+    pdf_url: Optional[str] = None
+    build_dir: Optional[str] = None
+
+
+@app.post("/api/compile", response_model=CompileResult)
 async def compile_latex(body: CompileBody):
     """Compile a .tex file and return the build log + download id."""
-    # Validate compiler
     compiler_cmd = COMPILER_MAP.get(body.compiler)
     if not compiler_cmd:
         raise HTTPException(status_code=400, detail=f"Unknown compiler: {body.compiler}")
 
-    # Resolve source file
     source = _resolve_safe(body.file_path)
     if not source.exists():
         raise HTTPException(status_code=404, detail="Source file not found")
     if not source.is_file():
         raise HTTPException(status_code=400, detail="Path is not a file")
 
-    # Create a build id and output directory
     build_id = str(uuid.uuid4())
-    build_dir = BUILD_OUTPUT_DIR / build_id
+    build_dir = _get_build_output_dir() / build_id
     build_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run the compiler (in the source file's directory so \\input works)
     try:
         result = subprocess.run(
             [
@@ -270,21 +459,22 @@ async def compile_latex(body: CompileBody):
             cwd=str(source.parent),
         )
     except FileNotFoundError:
-        raise HTTPException(status_code=500, detail=f"Compiler '{compiler_cmd}' not found on system")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Compiler '{compiler_cmd}' not found on system. Install a TeX distribution.",
+        )
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Compilation timed out (60s)")
 
-    # Look for the PDF
     pdf_name = source.stem + ".pdf"
     pdf_path = build_dir / pdf_name
     has_pdf = pdf_path.exists()
 
-    # Parse log for errors/warnings
     log_lines = result.stdout.splitlines() if result.stdout else []
     stderr_lines = result.stderr.splitlines() if result.stderr else []
     all_lines = log_lines + stderr_lines
 
-    parsed_logs = []
+    parsed_logs: list[dict[str, str]] = []
     for line in all_lines:
         if line.startswith("!"):
             parsed_logs.append({"type": "error", "message": line})
@@ -293,7 +483,6 @@ async def compile_latex(body: CompileBody):
         elif "Output written" in line or "pages" in line.lower():
             parsed_logs.append({"type": "success", "message": line})
 
-    # Always include a summary
     if result.returncode == 0 and has_pdf:
         pdf_size = pdf_path.stat().st_size
         parsed_logs.append({
@@ -306,22 +495,32 @@ async def compile_latex(body: CompileBody):
             "message": f"Compilation failed with exit code {result.returncode}",
         })
 
-    return {
-        "build_id": build_id,
-        "success": result.returncode == 0 and has_pdf,
-        "logs": parsed_logs,
-        "pdf_available": has_pdf,
-    }
+    # Cleanup old builds in background (best-effort)
+    _cleanup_old_builds()
+
+    return CompileResult(
+        build_id=build_id,
+        success=result.returncode == 0 and has_pdf,
+        logs=parsed_logs,
+        pdf_available=has_pdf,
+        pdf_url=f"/api/compile/{build_id}/pdf" if has_pdf else None,
+        build_dir=str(build_dir) if has_pdf else None,
+    )
 
 
 @app.get("/api/compile/{build_id}/pdf")
 async def get_compiled_pdf(build_id: str):
     """Download the compiled PDF for a given build."""
-    build_dir = BUILD_OUTPUT_DIR / build_id
+    # Validate UUID format loosely to prevent directory traversal
+    try:
+        uuid.UUID(build_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid build id format")
+
+    build_dir = _get_build_output_dir() / build_id
     if not build_dir.exists():
         raise HTTPException(status_code=404, detail="Build not found")
 
-    # Find the PDF
     pdfs = list(build_dir.glob("*.pdf"))
     if not pdfs:
         raise HTTPException(status_code=404, detail="No PDF found for this build")

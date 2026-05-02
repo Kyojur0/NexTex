@@ -1,7 +1,7 @@
 "use client"
 
-import { memo, useRef, useEffect, useCallback, useState } from "react"
-import { tokenizeLaTeX, getTokenColor } from "@/lib/syntax-highlighter"
+import { memo, useRef, useEffect, useCallback, useState, useMemo } from "react"
+import { tokenizeLaTeX, getTokenColor, Token } from "@/lib/syntax-highlighter"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { Sparkles } from "lucide-react"
@@ -42,18 +42,15 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
   useEffect(() => {
     const handler = (e: CustomEvent<{ line: number }>) => {
       setJumpLine(e.detail.line)
-      // Scroll to that line in the textarea
       if (textareaRef.current) {
         const lines = content.split("\n")
         const targetLine = Math.max(0, e.detail.line - 1)
         const charOffset = lines.slice(0, targetLine).join("\n").length
         textareaRef.current.focus()
         textareaRef.current.setSelectionRange(charOffset, charOffset + (lines[targetLine]?.length || 0))
-        // Scroll the line into view
         const lineHeight = fontSize * 1.5
         textareaRef.current.scrollTop = targetLine * lineHeight - 80
       }
-      // Clear highlight after 2s
       setTimeout(() => setJumpLine(null), 2000)
     }
     window.addEventListener("editor:jump-to-line", handler as EventListener)
@@ -66,17 +63,11 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
       e.preventDefault()
       const textarea = textareaRef.current
       if (!textarea) return
-
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
       const tab = " ".repeat(tabSize)
-
-      const newContent =
-        content.substring(0, start) + tab + content.substring(end)
-
+      const newContent = content.substring(0, start) + tab + content.substring(end)
       onChange(newContent)
-
-      // Move cursor after inserted tab
       setTimeout(() => {
         textarea.selectionStart = textarea.selectionEnd = start + tabSize
       }, 0)
@@ -95,36 +86,103 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
       highlightRef.current.scrollTop = textarea.scrollTop
       highlightRef.current.scrollLeft = textarea.scrollLeft
     }
-    if (containerRef.current?.querySelector('[data-line-numbers]')) {
-      const lineNumbers = containerRef.current.querySelector('[data-line-numbers]') as HTMLElement
+    const lineNumbers = containerRef.current?.querySelector("[data-line-numbers]") as HTMLElement | null
+    if (lineNumbers) {
       lineNumbers.scrollTop = textarea.scrollTop
     }
   }, [])
 
-  const lines = content.split('\n')
-  const tokens = enableSyntaxHighlight && mounted ? tokenizeLaTeX(content) : []
-  const isDark = mounted && theme === 'dark'
+  // -----------------------------------------------------------------------
+  // Performance-critical: memoize all derived structures
+  // -----------------------------------------------------------------------
 
-  // Build highlighted content by line
-  const highlightedLines = lines.map((line) => {
-    if (!enableSyntaxHighlight || !mounted) return line
+  const lines = useMemo(() => content.split("\n"), [content])
 
-    let lineTokens: typeof tokens = []
-    let lineStart = 0
+  const lineOffsets = useMemo(() => {
+    const offsets: number[] = []
+    let offset = 0
+    for (const line of lines) {
+      offsets.push(offset)
+      offset += line.length + 1 // +1 for newline char
+    }
+    return offsets
+  }, [lines])
 
-    // Find tokens for this line
+  const tokens = useMemo(() => {
+    if (!enableSyntaxHighlight || !mounted) return []
+    return tokenizeLaTeX(content)
+  }, [content, enableSyntaxHighlight, mounted])
+
+  // Build a Map for O(1) token lookup by absolute character position
+  const tokenMap = useMemo(() => {
+    const map = new Map<number, Token>()
     for (const token of tokens) {
-      const tokenLineStart = content.slice(0, token.start).split('\n').length - 1
-      const tokenLineEnd = content.slice(0, token.end).split('\n').length - 1
-      const currentLineNumber = lines.slice(0, lines.indexOf(line)).length
-
-      if (tokenLineStart === currentLineNumber) {
-        lineTokens.push(token)
+      for (let i = token.start; i < token.end; i++) {
+        map.set(i, token)
       }
     }
+    return map
+  }, [tokens])
 
-    return lineTokens
-  })
+  const isDark = mounted && theme === "dark"
+
+  // Memoize line numbers so they only re-render when line count changes
+  const lineNumbers = useMemo(() => {
+    return lines.map((_, i) => (
+      <div
+        key={i}
+        className="h-[1.5em] flex items-center justify-end pr-4 text-xs text-muted-foreground border-r border-border/30"
+      >
+        {i + 1}
+      </div>
+    ))
+  }, [lines.length])
+
+  // Memoize highlighted content — groups consecutive same-token chars into single spans
+  const highlightedContent = useMemo(() => {
+    if (!enableSyntaxHighlight || !mounted) return null
+
+    return lines.map((line, lineIdx) => {
+      const lineStart = lineOffsets[lineIdx]
+      const spans: React.ReactElement[] = []
+      let currentClass = ""
+      let currentText = ""
+
+      for (let i = 0; i < line.length; i++) {
+        const absPos = lineStart + i
+        const token = tokenMap.get(absPos)
+        const cls = token ? getTokenColor(token.type, isDark) : "text-foreground"
+
+        if (cls === currentClass) {
+          currentText += line[i]
+        } else {
+          if (currentText) {
+            spans.push(
+              <span key={spans.length} className={currentClass}>
+                {currentText}
+              </span>
+            )
+          }
+          currentClass = cls
+          currentText = line[i]
+        }
+      }
+
+      if (currentText) {
+        spans.push(
+          <span key={spans.length} className={currentClass}>
+            {currentText}
+          </span>
+        )
+      }
+
+      return (
+        <div key={lineIdx} style={{ height: "1.5em" }}>
+          {spans.length > 0 ? spans : <span>&nbsp;</span>}
+        </div>
+      )
+    })
+  }, [lines, lineOffsets, tokenMap, enableSyntaxHighlight, mounted, isDark])
 
   return (
     <div
@@ -144,14 +202,7 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
           className="overflow-hidden bg-muted/20 select-none"
           style={{ fontSize: `${fontSize}px` }}
         >
-          {lines.map((_, i) => (
-            <div
-              key={i}
-              className="h-[1.5em] flex items-center justify-end pr-4 text-xs text-muted-foreground border-r border-border/30"
-            >
-              {i + 1}
-            </div>
-          ))}
+          {lineNumbers}
         </div>
 
         {/* Highlight Layer (visible only for syntax highlighting) */}
@@ -163,30 +214,11 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
               fontSize: `${fontSize}px`,
               lineHeight: "1.5em",
               whiteSpace: "pre-wrap",
-              wordBreak: "break-words",
+              wordBreak: "break-word",
               color: "transparent",
             }}
           >
-            {lines.map((line, lineIdx) => (
-              <div key={lineIdx} style={{ height: "1.5em" }}>
-                {enableSyntaxHighlight && mounted ? (
-                  line.split('').map((char, idx) => {
-                    const absolutePos = content.split('\n').slice(0, lineIdx).join('\n').length + lineIdx + idx
-                    const token = tokens.find(t => t.start <= absolutePos && t.end > absolutePos)
-                    return (
-                      <span
-                        key={idx}
-                        className={token ? getTokenColor(token.type, isDark) : "text-foreground"}
-                      >
-                        {char}
-                      </span>
-                    )
-                  })
-                ) : (
-                  line
-                )}
-              </div>
-            ))}
+            {highlightedContent}
           </div>
         )}
 

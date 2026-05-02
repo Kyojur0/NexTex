@@ -8,11 +8,48 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface WorkspaceInfo {
+  workspace_root: string;
+  trusted_local_mode: boolean;
+  source: string;
+}
+
 export interface CompileResult {
   build_id: string;
   success: boolean;
   logs: Array<{ type: string; message: string }>;
   pdf_available: boolean;
+  pdf_url: string | null;
+  build_dir: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace
+// ---------------------------------------------------------------------------
+
+export async function getWorkspace(): Promise<WorkspaceInfo> {
+  const res = await fetch(`${API_BASE}/api/workspace`);
+  if (!res.ok) throw new Error(`Failed to get workspace: ${res.statusText}`);
+  return res.json();
+}
+
+export async function selectWorkspace(path: string, trusted: boolean): Promise<WorkspaceInfo> {
+  const res = await fetch(`${API_BASE}/api/workspace/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, trusted }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to select workspace: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function resetWorkspace(): Promise<WorkspaceInfo> {
+  const res = await fetch(`${API_BASE}/api/workspace/reset`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to reset workspace: ${res.statusText}`);
+  return res.json();
 }
 
 // ---------------------------------------------------------------------------

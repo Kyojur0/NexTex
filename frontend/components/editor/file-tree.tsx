@@ -28,7 +28,7 @@ interface FileTreeItemProps {
   item: FileItem
   depth: number
   activeFileId: string | null
-  onFileSelect: (id: string) => void
+  onFileSelect: (id: string, path: string) => void
 }
 
 const FileTreeItemComponent = memo(function FileTreeItem({
@@ -40,9 +40,12 @@ const FileTreeItemComponent = memo(function FileTreeItem({
   const [isExpanded, setIsExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState(item.name)
-  
-  const { renameFile, deleteFile, createFile } = useEditorStore()
-  
+
+  // Use selectors to avoid full-store subscription (perf fix)
+  const renameFile = useEditorStore((s) => s.renameFile)
+  const deleteFile = useEditorStore((s) => s.deleteFile)
+  const createFile = useEditorStore((s) => s.createFile)
+
   const isActive = activeFileId === item.id
   const isFolder = item.type === "folder"
 
@@ -80,7 +83,7 @@ const FileTreeItemComponent = memo(function FileTreeItem({
           if (isFolder) {
             setIsExpanded(!isExpanded)
           } else {
-            onFileSelect(item.id)
+            onFileSelect(item.id, item.path)
           }
         }}
       >
@@ -181,7 +184,7 @@ const FileTreeItemComponent = memo(function FileTreeItem({
 interface FileTreeProps {
   files: FileItem[]
   activeFileId: string | null
-  onFileSelect: (id: string) => void
+  onFileSelect: (id: string, path: string) => void
   onShowHistory: () => void
 }
 
@@ -191,7 +194,8 @@ export const FileTree = memo(function FileTree({
   onFileSelect,
   onShowHistory,
 }: FileTreeProps) {
-  const { projectName, createFile } = useEditorStore()
+  const projectName = useEditorStore((s) => s.projectName)
+  const createFile = useEditorStore((s) => s.createFile)
 
   const handleCreateRootFile = useCallback(() => {
     createFile(null, "untitled.tex", "file")

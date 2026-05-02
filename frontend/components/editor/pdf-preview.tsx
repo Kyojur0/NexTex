@@ -11,11 +11,13 @@ import {
 
 interface PdfPreviewProps {
   fileName: string
+  pdfUrl: string | null
   isBuilding: boolean
 }
 
 export const PdfPreview = memo(function PdfPreview({
   fileName,
+  pdfUrl,
   isBuilding,
 }: PdfPreviewProps) {
   const [zoom, setZoom] = useState(100)
@@ -32,18 +34,28 @@ export const PdfPreview = memo(function PdfPreview({
     setZoom(100)
   }, [])
 
+  const handleDownload = useCallback(() => {
+    if (!pdfUrl) return
+    const a = document.createElement("a")
+    a.href = pdfUrl
+    a.download = fileName
+    a.click()
+  }, [pdfUrl, fileName])
+
   return (
     <div className="h-full flex flex-col bg-muted/30 border border-border rounded-lg overflow-hidden">
       {/* Toolbar */}
       <div className="h-9 flex items-center justify-between px-3 border-b border-border bg-muted/50">
-        <span className="text-xs font-medium text-muted-foreground">{fileName}</span>
+        <span className="text-xs font-medium text-muted-foreground truncate max-w-[60%]">
+          {pdfUrl ? fileName : "No preview available"}
+        </span>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
             onClick={handleZoomOut}
-            disabled={isBuilding}
+            disabled={isBuilding || !pdfUrl}
           >
             <ZoomOut className="h-3.5 w-3.5" />
           </Button>
@@ -55,7 +67,7 @@ export const PdfPreview = memo(function PdfPreview({
             size="sm"
             className="h-6 w-6 p-0"
             onClick={handleZoomIn}
-            disabled={isBuilding}
+            disabled={isBuilding || !pdfUrl}
           >
             <ZoomIn className="h-3.5 w-3.5" />
           </Button>
@@ -65,103 +77,49 @@ export const PdfPreview = memo(function PdfPreview({
             size="sm"
             className="h-6 w-6 p-0"
             onClick={handleFitPage}
-            disabled={isBuilding}
+            disabled={isBuilding || !pdfUrl}
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={isBuilding}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={handleDownload}
+            disabled={isBuilding || !pdfUrl}
+          >
             <Download className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
       {/* Preview area */}
-      <div className="flex-1 overflow-auto scrollbar-thin p-6 flex justify-center bg-muted/20">
+      <div className="flex-1 overflow-auto scrollbar-thin p-2 flex justify-center bg-muted/20">
         {isBuilding ? (
           <div className="flex flex-col items-center justify-center text-muted-foreground">
             <div className="w-8 h-8 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin mb-4" />
             <p className="text-sm">Compiling document...</p>
           </div>
-        ) : (
-          /* Simulated PDF preview - in real app this would render actual PDF */
+        ) : pdfUrl ? (
           <div
-            className="bg-card shadow-lg rounded-sm overflow-hidden transition-transform"
+            className="bg-white shadow-lg rounded-sm overflow-hidden transition-transform origin-top-center"
             style={{
               transform: `scale(${zoom / 100})`,
-              transformOrigin: "top center",
+              width: `${zoom >= 100 ? '100%' : `${zoom}%`}`,
+              height: `${zoom >= 100 ? '100%' : `${zoom}%`}`,
             }}
           >
-            <div className="w-[612px] h-[792px] p-12">
-              {/* Simulated resume content */}
-              <div className="text-center mb-6">
-                <h1 className="text-2xl font-bold text-foreground">John Doe</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  john@email.com | (555) 123-4567 | San Francisco, CA | LinkedIn
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <h2 className="text-sm font-bold uppercase tracking-wide border-b border-foreground/20 pb-1 mb-3">
-                  Experience
-                </h2>
-                <div className="mb-4">
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-semibold text-sm">Senior Software Engineer</span>
-                    <span className="text-xs text-muted-foreground">2021 - Present</span>
-                  </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm italic text-muted-foreground">Tech Company Inc.</span>
-                    <span className="text-xs text-muted-foreground">San Francisco, CA</span>
-                  </div>
-                  <ul className="mt-2 text-sm space-y-1 ml-4">
-                    <li className="flex items-start gap-2">
-                      <span className="mt-1.5 w-1 h-1 rounded-full bg-foreground shrink-0" />
-                      <span>Led development of microservices architecture</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="mt-1.5 w-1 h-1 rounded-full bg-foreground shrink-0" />
-                      <span>Improved system performance by 40%</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="mt-1.5 w-1 h-1 rounded-full bg-foreground shrink-0" />
-                      <span>Mentored team of 5 junior developers</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <h2 className="text-sm font-bold uppercase tracking-wide border-b border-foreground/20 pb-1 mb-3">
-                  Education
-                </h2>
-                <div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-semibold text-sm">Bachelor of Science in Computer Science</span>
-                    <span className="text-xs text-muted-foreground">2017</span>
-                  </div>
-                  <span className="text-sm italic text-muted-foreground">
-                    University of California, Berkeley
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-wide border-b border-foreground/20 pb-1 mb-3">
-                  Skills
-                </h2>
-                <div className="text-sm space-y-1">
-                  <p>
-                    <span className="font-semibold">Languages:</span> JavaScript, TypeScript, Python, Go
-                  </p>
-                  <p>
-                    <span className="font-semibold">Frameworks:</span> React, Node.js, Next.js, FastAPI
-                  </p>
-                  <p>
-                    <span className="font-semibold">Tools:</span> Git, Docker, Kubernetes, AWS
-                  </p>
-                </div>
-              </div>
-            </div>
+            <iframe
+              src={pdfUrl}
+              title="PDF Preview"
+              className="w-full h-full border-0"
+              style={{ minWidth: "612px", minHeight: "792px" }}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
+            <Maximize2 className="h-8 w-8 opacity-30" />
+            <p className="text-xs">Build to generate PDF preview</p>
           </div>
         )}
       </div>

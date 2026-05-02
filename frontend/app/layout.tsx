@@ -14,8 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'TeXPress - Modern LaTeX Editor',
-  description: 'A sleek, minimal LaTeX editor for crafting professional resumes. Edit locally, preview instantly.',
+  title: 'NexTex - Modern LaTeX Editor',
+  description: 'A production-grade local LaTeX editor with real filesystem integration, instant preview, and trusted local mode.',
   generator: 'v0.app',
   icons: {
     icon: [
