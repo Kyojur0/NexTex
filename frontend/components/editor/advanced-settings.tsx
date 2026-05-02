@@ -67,7 +67,8 @@ export const AdvancedSettings = memo(function AdvancedSettings({
   open,
   onOpenChange,
 }: AdvancedSettingsProps) {
-  const { settings, setSettings } = useEditorStore()
+  const settings = useEditorStore((s) => s.settings)
+  const setSettings = useEditorStore((s) => s.setSettings)
 
   const handleFontSizeChange = useCallback(
     (value: string) => {

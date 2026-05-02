@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect } from 'react'
+import { createContext, useContext, useEffect, useCallback, useMemo } from 'react'
 import { useEditorStore } from '@/lib/store'
 
 export const ColorPaletteContext = createContext<{
@@ -9,23 +9,26 @@ export const ColorPaletteContext = createContext<{
 } | null>(null)
 
 export function ColorPaletteProvider({ children }: { children: React.ReactNode }) {
-  const { settings, setSettings } = useEditorStore()
+  const colorPalette = useEditorStore((s) => s.settings.colorPalette)
+  const setSettings = useEditorStore((s) => s.setSettings)
 
   useEffect(() => {
     // Apply color palette to root and html element
     const htmlElement = document.documentElement
-    htmlElement.setAttribute('data-color-palette', settings.colorPalette)
+    htmlElement.setAttribute('data-color-palette', colorPalette)
     // Also apply to body to ensure children inherit
-    document.body.setAttribute('data-color-palette', settings.colorPalette)
-  }, [settings.colorPalette])
+    document.body.setAttribute('data-color-palette', colorPalette)
+  }, [colorPalette])
 
-  const setPalette = (palette: string) => {
+  const setPalette = useCallback((palette: string) => {
     setSettings({ colorPalette: palette as any })
-  }
+  }, [setSettings])
+
+  const value = useMemo(() => ({ palette: colorPalette, setPalette }), [colorPalette, setPalette])
 
   return (
-    <ColorPaletteContext.Provider value={{ palette: settings.colorPalette, setPalette }}>
-      <div data-color-palette={settings.colorPalette} suppressHydrationWarning>
+    <ColorPaletteContext.Provider value={value}>
+      <div data-color-palette={colorPalette} suppressHydrationWarning>
         {children}
       </div>
     </ColorPaletteContext.Provider>

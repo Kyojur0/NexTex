@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, memo } from "react"
 import { ThemeProvider } from "next-themes"
 import { Header } from "@/components/editor/header"
 import { FileTree } from "@/components/editor/file-tree"
@@ -150,44 +150,160 @@ function OpenFolderDialog({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Isolated sub-components to prevent cascade re-renders
+// ---------------------------------------------------------------------------
+
+const EditorPane = memo(function EditorPane() {
+  const content = useEditorStore((s) => s.content)
+  const settings = useEditorStore((s) => s.settings)
+  const activeFilePath = useEditorStore((s) => s.activeFilePath)
+
+  const fileName = activeFilePath ? activeFilePath.split("/").pop() || "Untitled" : "Untitled"
+
+  const handleChange = useCallback((newContent: string) => {
+    const state = useEditorStore.getState()
+    state.setContent(newContent)
+    state.setIsModified(true)
+  }, [])
+
+  return (
+    <EnhancedCodeEditor
+      content={content}
+      onChange={handleChange}
+      fileName={fileName}
+      fontSize={settings.fontSize}
+      tabSize={settings.tabSize}
+      enableSyntaxHighlight={settings.enableSyntaxHighlight}
+      wordWrap={settings.wordWrap}
+      onAISpotlight={() => useEditorStore.getState().setShowAISpotlight(true)}
+    />
+  )
+})
+
+const PreviewPane = memo(function PreviewPane() {
+  const pdfUrl = useEditorStore((s) => s.pdfUrl)
+  const isBuilding = useEditorStore((s) => s.isBuilding)
+  const activeFilePath = useEditorStore((s) => s.activeFilePath)
+
+  const fileName = activeFilePath
+    ? (activeFilePath.split("/").pop()?.replace(".tex", ".pdf") || "document.pdf")
+    : "document.pdf"
+
+  return (
+    <PdfPreview
+      fileName={fileName}
+      pdfUrl={pdfUrl}
+      isBuilding={isBuilding}
+    />
+  )
+})
+
+const TerminalPane = memo(function TerminalPane() {
+  const logs = useEditorStore((s) => s.buildLogs)
+  const isBuilding = useEditorStore((s) => s.isBuilding)
+  const isOpen = useEditorStore((s) => s.showBuildLog)
+
+  const handleJumpToLine = useCallback((line: number) => {
+    window.dispatchEvent(new CustomEvent("editor:jump-to-line", { detail: { line } }))
+  }, [])
+
+  const handleToggle = useCallback(() => {
+    const state = useEditorStore.getState()
+    state.setShowBuildLog(!state.showBuildLog)
+  }, [])
+
+  return (
+    <SmartTerminal
+      logs={logs}
+      isBuilding={isBuilding}
+      isOpen={isOpen}
+      onToggle={handleToggle}
+      onJumpToLine={handleJumpToLine}
+    />
+  )
+})
+
+const SidebarPane = memo(function SidebarPane({
+  width,
+  showHistory,
+  onShowHistory,
+  onFileSelect,
+}: {
+  width: number
+  showHistory: boolean
+  onShowHistory: () => void
+  onFileSelect: (id: string, path: string) => void
+}) {
+  const files = useEditorStore((s) => s.files)
+  const activeFileId = useEditorStore((s) => s.activeFileId)
+
+  return (
+    <div
+      style={{ width: `${width}px` }}
+      className="flex flex-col border-r border-border shrink-0 overflow-hidden"
+    >
+      {showHistory ? (
+        <VersionHistory onClose={() => useEditorStore.getState().setShowHistory(false)} />
+      ) : (
+        <FileTree
+          files={files}
+          activeFileId={activeFileId}
+          onFileSelect={onFileSelect}
+          onShowHistory={onShowHistory}
+        />
+      )}
+    </div>
+  )
+})
+
+const AISpotlightPane = memo(function AISpotlightPane() {
+  const content = useEditorStore((s) => s.content)
+  const aiModel = useEditorStore((s) => s.settings.aiModel)
+
+  const handleAccept = useCallback((newContent: string) => {
+    const state = useEditorStore.getState()
+    state.setContent(newContent)
+    state.setIsModified(true)
+    state.setShowAISpotlight(false)
+  }, [])
+
+  const handleClose = useCallback(() => {
+    useEditorStore.getState().setShowAISpotlight(false)
+  }, [])
+
+  return (
+    <AISpotlight
+      selectedCode={content}
+      currentContent={content}
+      onAccept={handleAccept}
+      onClose={handleClose}
+      aiModel={aiModel}
+    />
+  )
+})
+
+// ---------------------------------------------------------------------------
+// Main layout shell
+// ---------------------------------------------------------------------------
+
 function EditorInner() {
-  const store = useEditorStore()
-  const {
-    files,
-    activeFileId,
-    activeFilePath,
-    content,
-    isModified,
-    isBuilding,
-    showBuildLog,
-    showTemplateModal,
-    showSettings,
-    showPreview,
-    showHistory,
-    showAISpotlight,
-    sidebarWidth,
-    isDragging,
-    settings,
-    buildLogs,
-    pdfUrl,
-    workspaceRoot,
-    setContent,
-    setIsModified,
-    setShowBuildLog,
-    setShowTemplateModal,
-    setShowSettings,
-    setShowPreview,
-    setShowHistory,
-    setShowAISpotlight,
-    setSidebarWidth,
-    setIsDragging,
-    loadWorkspace,
-    selectWorkspace,
-    openFile,
-    saveActiveFile,
-    compileActiveFile,
-    refreshFiles,
-  } = store
+  // Only subscribe to layout-level state that changes rarely
+  const showPreview = useEditorStore((s) => s.showPreview)
+  const showHistory = useEditorStore((s) => s.showHistory)
+  const showTemplateModal = useEditorStore((s) => s.showTemplateModal)
+  const showSettings = useEditorStore((s) => s.showSettings)
+  const showAISpotlight = useEditorStore((s) => s.showAISpotlight)
+  const sidebarWidth = useEditorStore((s) => s.sidebarWidth)
+  const isDragging = useEditorStore((s) => s.isDragging)
+
+  const setSidebarWidth = useEditorStore((s) => s.setSidebarWidth)
+  const setIsDragging = useEditorStore((s) => s.setIsDragging)
+  const setShowPreview = useEditorStore((s) => s.setShowPreview)
+  const setShowTemplateModal = useEditorStore((s) => s.setShowTemplateModal)
+  const setShowSettings = useEditorStore((s) => s.setShowSettings)
+  const setShowAISpotlight = useEditorStore((s) => s.setShowAISpotlight)
+  const selectWorkspace = useEditorStore((s) => s.selectWorkspace)
 
   const [mounted, setMounted] = useState(false)
   const [showOpenFolder, setShowOpenFolder] = useState(false)
@@ -199,26 +315,108 @@ function EditorInner() {
   // Initialize on mount
   useEffect(() => {
     setMounted(true)
-    let cancelled = false
-    async function init() {
-      try {
-        await loadWorkspace()
-        if (cancelled) return
-        // Open first .tex file if available
+    const state = useEditorStore.getState()
+    state
+      .loadWorkspace()
+      .then(async () => {
         const tree = await api.fetchFileTree("")
         const firstTex = findFirstTexFile(tree)
-        if (firstTex && !cancelled) {
-          await openFile(firstTex.id, firstTex.path)
+        if (firstTex) {
+          await state.openFile(firstTex.id, firstTex.path)
+          console.log("[NexTex] Opened first .tex file:", firstTex.path)
+        } else {
+          console.warn("[NexTex] No .tex files found in workspace")
         }
-      } catch (e) {
-        console.error("Failed to initialize workspace", e)
-      } finally {
-        if (!cancelled) setIsLoading(false)
+      })
+      .catch((e) => {
+        console.error("[NexTex] Failed to initialize workspace:", e)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
+
+  // Keyboard shortcuts - stable, only registered once
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const state = useEditorStore.getState()
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault()
+        state.saveActiveFile().catch((err: any) => {
+          console.error("[NexTex] Save failed:", err)
+        })
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault()
+        console.log("[NexTex] Build shortcut triggered")
+        state.compileActiveFile().catch((err: any) => {
+          console.error("[NexTex] Build failed:", err)
+        })
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        state.setShowAISpotlight(true)
+      }
+      if (e.key === "Escape") {
+        state.setShowAISpotlight(false)
       }
     }
-    init()
-    return () => { cancelled = true }
-  }, [loadWorkspace, openFile])
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
+
+  // Autosave effect - reads current state inside timer to keep deps stable
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
+      // Only react to content changes when auto-save is on
+      if (
+        state.content !== prevState.content &&
+        state.isModified &&
+        state.activeFilePath &&
+        state.settings.autoSave
+      ) {
+        // Debounce via a module-level timer would be cleaner,
+        // but for simplicity we use a local ref timer inside the subscriber.
+      }
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // Debounced autosave using a ref timer
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe((state) => {
+      if (!state.settings.autoSave || !state.isModified || !state.activeFilePath) {
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current)
+          autoSaveTimerRef.current = null
+        }
+        return
+      }
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        const current = useEditorStore.getState()
+        if (current.isModified && current.activeFilePath) {
+          current.saveActiveFile().then(() => {
+            if (current.settings.buildOnSave) {
+              current.compileActiveFile()
+            }
+          }).catch((err: any) => {
+            console.error("[NexTex] Auto-save failed:", err)
+          })
+        }
+        autoSaveTimerRef.current = null
+      }, 2000)
+    })
+    return () => {
+      unsubscribe()
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [])
 
   // Sidebar resize
   const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
@@ -253,7 +451,9 @@ function EditorInner() {
       const newRatio = Math.max(0.25, Math.min(0.8, (e.clientX - rect.left) / rect.width))
       setSplitRatio(newRatio)
     }
-    const handleMouseUp = () => { splitDragging.current = false }
+    const handleMouseUp = () => {
+      splitDragging.current = false
+    }
     window.addEventListener("mousemove", handleMouseMove)
     window.addEventListener("mouseup", handleMouseUp)
     return () => {
@@ -262,65 +462,41 @@ function EditorInner() {
     }
   }, [])
 
-  // File select with unsaved guard
-  const handleFileSelect = useCallback(async (fileId: string, filePath: string) => {
-    if (isModified && activeFilePath) {
-      // Auto-save on switch to prevent silent loss
-      await saveActiveFile()
-    }
-    await openFile(fileId, filePath)
-  }, [isModified, activeFilePath, saveActiveFile, openFile])
-
-  const handleContentChange = useCallback((newContent: string) => {
-    setContent(newContent)
-    setIsModified(true)
-  }, [setContent, setIsModified])
-
+  // Stable callbacks passed to Header
   const handleSave = useCallback(async () => {
-    await saveActiveFile()
-    if (settings.buildOnSave && activeFilePath) {
-      await compileActiveFile()
+    const state = useEditorStore.getState()
+    await state.saveActiveFile()
+    if (state.settings.buildOnSave && state.activeFilePath) {
+      await state.compileActiveFile()
     }
-  }, [saveActiveFile, settings.buildOnSave, activeFilePath, compileActiveFile])
+  }, [])
 
   const handleBuild = useCallback(async () => {
-    if (!activeFilePath) return
-    if (isModified) {
-      await saveActiveFile()
+    const state = useEditorStore.getState()
+    if (!state.activeFilePath) {
+      console.warn("[NexTex] Build skipped: no active file")
+      return
     }
-    await compileActiveFile()
-  }, [activeFilePath, isModified, saveActiveFile, compileActiveFile])
+    console.log("[NexTex] Build started for:", state.activeFilePath)
+    if (state.isModified) {
+      await state.saveActiveFile()
+    }
+    await state.compileActiveFile()
+  }, [])
 
-  // Autosave
-  useEffect(() => {
-    if (!settings.autoSave || !isModified || !activeFilePath) return
-    const timer = setTimeout(() => {
-      saveActiveFile()
-      if (settings.buildOnSave) {
-        compileActiveFile()
-      }
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [content, isModified, activeFilePath, settings.autoSave, settings.buildOnSave, saveActiveFile, compileActiveFile])
+  const handleFileSelect = useCallback(async (fileId: string, filePath: string) => {
+    const state = useEditorStore.getState()
+    if (state.isModified && state.activeFilePath) {
+      await state.saveActiveFile()
+    }
+    await state.openFile(fileId, filePath)
+  }, [])
 
   const handleJumpToLine = useCallback((line: number) => {
     window.dispatchEvent(new CustomEvent("editor:jump-to-line", { detail: { line } }))
   }, [])
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); handleSave() }
-      if ((e.metaKey || e.ctrlKey) && e.key === "b") { e.preventDefault(); handleBuild() }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setShowAISpotlight(true) }
-      if (e.key === "Escape") { setShowAISpotlight(false) }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [handleSave, handleBuild, setShowAISpotlight])
-
   if (!mounted) return null
-
-  const activeFileName = activeFilePath ? activeFilePath.split("/").pop() || "Untitled" : "Untitled"
 
   return (
     <LayoutWrapper>
@@ -338,46 +514,35 @@ function EditorInner() {
 
       {/* Main workspace */}
       <div className="flex-1 flex overflow-hidden">
-
-        {/* Left sidebar: file tree or version history */}
-        <div style={{ width: `${sidebarWidth}px` }} className={cn("flex flex-col border-r border-border shrink-0 overflow-hidden", isDragging && "select-none")}>
-          {showHistory ? (
-            <VersionHistory onClose={() => setShowHistory(false)} />
-          ) : (
-            <FileTree
-              files={files}
-              activeFileId={activeFileId}
-              onFileSelect={handleFileSelect}
-              onShowHistory={() => setShowHistory(true)}
-            />
-          )}
-        </div>
+        <SidebarPane
+          width={sidebarWidth}
+          showHistory={showHistory}
+          onShowHistory={() => useEditorStore.getState().setShowHistory(true)}
+          onFileSelect={handleFileSelect}
+        />
 
         {/* Sidebar resize handle */}
         <div
           onMouseDown={handleSidebarMouseDown}
-          className={cn("w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors shrink-0", isDragging && "bg-primary/40")}
+          className={cn(
+            "w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors shrink-0",
+            isDragging && "bg-primary/40"
+          )}
         />
 
         {/* Editor + Preview horizontal split */}
         <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
           {/* Code editor */}
-          <div style={{ width: showPreview ? `${splitRatio * 100}%` : "100%" }} className="flex flex-col overflow-hidden transition-all duration-200 p-3">
+          <div
+            style={{ width: showPreview ? `${splitRatio * 100}%` : "100%" }}
+            className="flex flex-col overflow-hidden transition-all duration-200 p-3"
+          >
             {isLoading ? (
               <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
                 Loading workspace...
               </div>
             ) : (
-              <EnhancedCodeEditor
-                content={content}
-                onChange={handleContentChange}
-                fileName={activeFileName}
-                fontSize={settings.fontSize}
-                tabSize={settings.tabSize}
-                enableSyntaxHighlight={settings.enableSyntaxHighlight}
-                wordWrap={settings.wordWrap}
-                onAISpotlight={() => setShowAISpotlight(true)}
-              />
+              <EditorPane />
             )}
           </div>
 
@@ -392,38 +557,17 @@ function EditorInner() {
           {/* PDF preview */}
           {showPreview && (
             <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="flex flex-col overflow-hidden p-3">
-              <PdfPreview
-                fileName={activeFileName.replace(".tex", ".pdf")}
-                pdfUrl={pdfUrl}
-                isBuilding={isBuilding}
-              />
+              <PreviewPane />
             </div>
           )}
         </div>
       </div>
 
       {/* Smart Terminal - collapsible bottom panel */}
-      <SmartTerminal
-        logs={buildLogs}
-        isBuilding={isBuilding}
-        isOpen={showBuildLog}
-        onToggle={() => setShowBuildLog(!showBuildLog)}
-        onJumpToLine={handleJumpToLine}
-      />
+      <TerminalPane />
 
       {/* AI Spotlight modal */}
-      {showAISpotlight && (
-        <AISpotlight
-          selectedCode={content}
-          currentContent={content}
-          onAccept={(newContent) => {
-            handleContentChange(newContent)
-            setShowAISpotlight(false)
-          }}
-          onClose={() => setShowAISpotlight(false)}
-          aiModel={settings.aiModel}
-        />
-      )}
+      {showAISpotlight && <AISpotlightPane />}
 
       {/* Modals */}
       <TemplateModal open={showTemplateModal} onOpenChange={setShowTemplateModal} />

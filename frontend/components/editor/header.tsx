@@ -79,7 +79,7 @@ function formatWorkspacePath(path: string): string {
   return ".../" + parts.slice(-2).join("/")
 }
 
-export function Header({
+export const Header = memo(function Header({
   onOpenFolder,
   onOpenFile,
   onSave,
@@ -254,7 +254,7 @@ export function Header({
       </div>
     </header>
   )
-}
+})
 
 function RecentFilesList() {
   const recentFiles = useEditorStore((s) => s.recentFiles)
