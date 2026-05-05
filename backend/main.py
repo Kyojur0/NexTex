@@ -5,6 +5,7 @@ Production-grade local filesystem + LaTeX compilation backend.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -160,6 +161,69 @@ def _cleanup_old_builds() -> None:
             shutil.rmtree(old)
         except OSError:
             pass
+
+
+def _parse_compile_logs(stdout: str, stderr: str) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    """Parse pdflatex stdout/stderr into log entries and error line references.
+
+    pdflatex error format:
+        ! LaTeX Error: ...
+        l.15 \somecommand
+                   {argument}
+
+    Warning format (inline line number):
+        LaTeX Warning: ... on input line 23.
+    """
+    log_lines = stdout.splitlines() if stdout else []
+    stderr_lines = stderr.splitlines() if stderr else []
+    all_lines = log_lines + stderr_lines
+
+    parsed_logs: list[dict[str, str]] = []
+    error_lines: list[dict[str, Any]] = []
+
+    i = 0
+    while i < len(all_lines):
+        line = all_lines[i]
+
+        # Error lines start with "!"
+        if line.startswith("!"):
+            parsed_logs.append({"type": "error", "message": line})
+            # Look ahead for l.NNN line reference (skip blank lines)
+            lookahead = i + 1
+            while lookahead < len(all_lines) and not all_lines[lookahead].strip():
+                lookahead += 1
+            if lookahead < len(all_lines):
+                next_line = all_lines[lookahead]
+                match = re.search(r"^l\.(\d+)", next_line)
+                if match:
+                    line_num = int(match.group(1))
+                    context = next_line[match.end():].strip()
+                    error_lines.append({
+                        "line": line_num,
+                        "message": line[2:].strip(),  # strip "! " prefix
+                        "context": context,
+                        "severity": "error",
+                    })
+                    i = lookahead  # consume lines up to and including l.N
+        # Warning lines
+        elif "Warning" in line or "warning" in line:
+            parsed_logs.append({"type": "warning", "message": line})
+            # Some warnings include inline line numbers
+            warn_match = re.search(r"(?:on input line|line)\s+(\d+)", line, re.IGNORECASE)
+            if warn_match:
+                error_lines.append({
+                    "line": int(warn_match.group(1)),
+                    "message": line.strip(),
+                    "context": "",
+                    "severity": "warning",
+                })
+        # Success indicators
+        elif "Output written" in line or "pages" in line.lower():
+            parsed_logs.append({"type": "success", "message": line})
+
+        i += 1
+
+    return parsed_logs, error_lines
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +485,7 @@ class CompileResult(BaseModel):
     build_id: str
     success: bool
     logs: list[dict[str, str]]
+    error_lines: list[dict[str, Any]]
     pdf_available: bool
     pdf_url: Optional[str] = None
     build_dir: Optional[str] = None
@@ -450,7 +515,7 @@ async def compile_latex(body: CompileBody):
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 f"-output-directory={build_dir}",
-                str(source),
+                source.name,
             ],
             capture_output=True,
             text=True,
@@ -469,18 +534,7 @@ async def compile_latex(body: CompileBody):
     pdf_path = build_dir / pdf_name
     has_pdf = pdf_path.exists()
 
-    log_lines = result.stdout.splitlines() if result.stdout else []
-    stderr_lines = result.stderr.splitlines() if result.stderr else []
-    all_lines = log_lines + stderr_lines
-
-    parsed_logs: list[dict[str, str]] = []
-    for line in all_lines:
-        if line.startswith("!"):
-            parsed_logs.append({"type": "error", "message": line})
-        elif "Warning" in line or "warning" in line:
-            parsed_logs.append({"type": "warning", "message": line})
-        elif "Output written" in line or "pages" in line.lower():
-            parsed_logs.append({"type": "success", "message": line})
+    parsed_logs, error_lines = _parse_compile_logs(result.stdout, result.stderr)
 
     if result.returncode == 0 and has_pdf:
         pdf_size = pdf_path.stat().st_size
@@ -501,6 +555,7 @@ async def compile_latex(body: CompileBody):
         build_id=build_id,
         success=result.returncode == 0 and has_pdf,
         logs=parsed_logs,
+        error_lines=error_lines,
         pdf_available=has_pdf,
         pdf_url=f"/api/compile/{build_id}/pdf" if has_pdf else None,
         build_dir=str(build_dir) if has_pdf else None,

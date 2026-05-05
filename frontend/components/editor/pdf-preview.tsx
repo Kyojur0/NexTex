@@ -7,6 +7,8 @@ import {
   ZoomOut,
   Download,
   Maximize2,
+  Moon,
+  Sun,
 } from "lucide-react"
 
 interface PdfPreviewProps {
@@ -21,6 +23,11 @@ export const PdfPreview = memo(function PdfPreview({
   isBuilding,
 }: PdfPreviewProps) {
   const [zoom, setZoom] = useState(100)
+  const [darkMode, setDarkMode] = useState(false)
+
+  const handleToggleDark = useCallback(() => {
+    setDarkMode((d) => !d)
+  }, [])
 
   const handleZoomOut = useCallback(() => {
     setZoom((z) => Math.max(25, z - 25))
@@ -90,6 +97,17 @@ export const PdfPreview = memo(function PdfPreview({
           >
             <Download className="h-3.5 w-3.5" />
           </Button>
+          <div className="w-px h-4 bg-border mx-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={handleToggleDark}
+            disabled={isBuilding || !pdfUrl}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {darkMode ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </Button>
         </div>
       </div>
 
@@ -107,6 +125,7 @@ export const PdfPreview = memo(function PdfPreview({
               transform: `scale(${zoom / 100})`,
               width: `${zoom >= 100 ? '100%' : `${zoom}%`}`,
               height: `${zoom >= 100 ? '100%' : `${zoom}%`}`,
+              filter: darkMode ? "invert(1) hue-rotate(180deg)" : "none",
             }}
           >
             <iframe

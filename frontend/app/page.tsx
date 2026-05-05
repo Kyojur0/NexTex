@@ -5,6 +5,8 @@ import { ThemeProvider } from "next-themes"
 import { Header } from "@/components/editor/header"
 import { FileTree } from "@/components/editor/file-tree"
 import { EnhancedCodeEditor } from "@/components/editor/enhanced-code-editor"
+import { EditorTabBar } from "@/components/editor/editor-tab-bar"
+import { VisualEditor } from "@/components/editor/visual-editor"
 import { PdfPreview } from "@/components/editor/pdf-preview"
 import { SmartTerminal } from "@/components/editor/smart-terminal"
 import { TemplateModal } from "@/components/editor/template-modal"
@@ -158,6 +160,7 @@ const EditorPane = memo(function EditorPane() {
   const content = useEditorStore((s) => s.content)
   const settings = useEditorStore((s) => s.settings)
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
+  const errorLines = useEditorStore((s) => s.errorLines)
 
   const fileName = activeFilePath ? activeFilePath.split("/").pop() || "Untitled" : "Untitled"
 
@@ -177,6 +180,7 @@ const EditorPane = memo(function EditorPane() {
       enableSyntaxHighlight={settings.enableSyntaxHighlight}
       wordWrap={settings.wordWrap}
       onAISpotlight={() => useEditorStore.getState().setShowAISpotlight(true)}
+      errorLines={errorLines}
     />
   )
 })
@@ -294,6 +298,7 @@ function EditorInner() {
   const showTemplateModal = useEditorStore((s) => s.showTemplateModal)
   const showSettings = useEditorStore((s) => s.showSettings)
   const showAISpotlight = useEditorStore((s) => s.showAISpotlight)
+  const activeEditorTab = useEditorStore((s) => s.activeEditorTab)
   const sidebarWidth = useEditorStore((s) => s.sidebarWidth)
   const isDragging = useEditorStore((s) => s.isDragging)
 
@@ -363,23 +368,6 @@ function EditorInner() {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
-
-  // Autosave effect - reads current state inside timer to keep deps stable
-  useEffect(() => {
-    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
-      // Only react to content changes when auto-save is on
-      if (
-        state.content !== prevState.content &&
-        state.isModified &&
-        state.activeFilePath &&
-        state.settings.autoSave
-      ) {
-        // Debounce via a module-level timer would be cleaner,
-        // but for simplicity we use a local ref timer inside the subscriber.
-      }
-    })
-    return () => unsubscribe()
   }, [])
 
   // Debounced autosave using a ref timer
@@ -542,7 +530,12 @@ function EditorInner() {
                 Loading workspace...
               </div>
             ) : (
-              <EditorPane />
+              <>
+                <EditorTabBar />
+                <div className="flex-1 overflow-hidden mt-2">
+                  {activeEditorTab === "text" ? <EditorPane /> : <VisualEditor />}
+                </div>
+              </>
             )}
           </div>
 

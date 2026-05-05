@@ -18,6 +18,7 @@ export interface CompileResult {
   build_id: string;
   success: boolean;
   logs: Array<{ type: string; message: string }>;
+  error_lines: Array<{ line: number; message: string; context: string; severity: string }>;
   pdf_available: boolean;
   pdf_url: string | null;
   build_dir: string | null;

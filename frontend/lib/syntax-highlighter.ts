@@ -45,6 +45,20 @@ export function tokenizeLaTeX(text: string): Token[] {
       continue
     }
 
+    // Escaped symbols and short control sequences such as \\ or \%.
+    // These are valid LaTeX and must still advance the scanner.
+    if (char === '\\') {
+      const end = Math.min(i + 2, text.length)
+      tokens.push({
+        type: 'command',
+        content: text.slice(i, end),
+        start: i,
+        end,
+      })
+      i = end
+      continue
+    }
+
     // Environments (\begin{...} and \end{...})
     if (text.startsWith('\\begin{', i) || text.startsWith('\\end{', i)) {
       const braceStart = text.indexOf('{', i)
@@ -85,6 +99,16 @@ export function tokenizeLaTeX(text: string): Token[] {
         start: i,
         end: j,
       })
+    } else {
+      // Defensive fallback: never let the tokenizer loop forever on
+      // punctuation that is not explicitly classified above.
+      tokens.push({
+        type: 'text',
+        content: char,
+        start: i,
+        end: i + 1,
+      })
+      j = i + 1
     }
     i = j
   }
