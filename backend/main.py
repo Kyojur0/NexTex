@@ -188,12 +188,17 @@ def _parse_compile_logs(stdout: str, stderr: str) -> tuple[list[dict[str, str]],
         # Error lines start with "!"
         if line.startswith("!"):
             parsed_logs.append({"type": "error", "message": line})
-            # Look ahead for l.NNN line reference (skip blank lines)
+            # Look ahead up to 6 lines for l.NNN reference.
+            # pdflatex often inserts <inserted text>, <to be read again>, etc.
+            # between the ! error and the l.N line.
             lookahead = i + 1
-            while lookahead < len(all_lines) and not all_lines[lookahead].strip():
-                lookahead += 1
-            if lookahead < len(all_lines):
+            consumed = 0
+            while lookahead < len(all_lines) and consumed < 6:
                 next_line = all_lines[lookahead]
+                if not next_line.strip():
+                    lookahead += 1
+                    consumed += 1
+                    continue
                 match = re.search(r"^l\.(\d+)", next_line)
                 if match:
                     line_num = int(match.group(1))
@@ -205,6 +210,12 @@ def _parse_compile_logs(stdout: str, stderr: str) -> tuple[list[dict[str, str]],
                         "severity": "error",
                     })
                     i = lookahead  # consume lines up to and including l.N
+                    break
+                # Stop scanning if we hit another ! or Output written
+                if next_line.startswith("!") or "Output written" in next_line:
+                    break
+                lookahead += 1
+                consumed += 1
         # Warning lines
         elif "Warning" in line or "warning" in line:
             parsed_logs.append({"type": "warning", "message": line})

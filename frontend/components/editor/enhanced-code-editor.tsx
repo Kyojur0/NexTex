@@ -34,8 +34,11 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const highlightRef = useRef<HTMLDivElement>(null)
+  const errorBgRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [lineHeights, setLineHeights] = useState<number[]>([])
 
   useEffect(() => {
     setMounted(true)
@@ -45,18 +48,19 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
   useEffect(() => {
     const handler = (e: CustomEvent<{ line: number }>) => {
       if (textareaRef.current) {
-        const lines = content.split("\n")
+        const linesArr = content.split("\n")
         const targetLine = Math.max(0, e.detail.line - 1)
-        const charOffset = lines.slice(0, targetLine).join("\n").length
+        const charOffset = linesArr.slice(0, targetLine).join("\n").length
         textareaRef.current.focus()
-        textareaRef.current.setSelectionRange(charOffset, charOffset + (lines[targetLine]?.length || 0))
-        const lineHeight = fontSize * 1.5
-        textareaRef.current.scrollTop = targetLine * lineHeight - 80
+        textareaRef.current.setSelectionRange(charOffset, charOffset + (linesArr[targetLine]?.length || 0))
+        // Sum wrapped heights of lines before target
+        const scrollOffset = lineHeights.slice(0, targetLine).reduce((a, b) => a + b, 0) - 80
+        textareaRef.current.scrollTop = Math.max(0, scrollOffset)
       }
     }
     window.addEventListener("editor:jump-to-line", handler as EventListener)
     return () => window.removeEventListener("editor:jump-to-line", handler as EventListener)
-  }, [content, fontSize])
+  }, [content, lineHeights])
 
   // Handle tab key
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -80,12 +84,16 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
     onChange(e.target.value)
   }, [onChange])
 
-  // Sync scroll between textarea and highlights
+  // Sync scroll between textarea and highlights / error backgrounds
   const handleScroll = useCallback((e: React.UIEvent<HTMLTextAreaElement>) => {
     const textarea = e.target as HTMLTextAreaElement
     if (highlightRef.current) {
       highlightRef.current.scrollTop = textarea.scrollTop
       highlightRef.current.scrollLeft = textarea.scrollLeft
+    }
+    if (errorBgRef.current) {
+      errorBgRef.current.scrollTop = textarea.scrollTop
+      errorBgRef.current.scrollLeft = textarea.scrollLeft
     }
     const lineNumbers = containerRef.current?.querySelector("[data-line-numbers]") as HTMLElement | null
     if (lineNumbers) {
@@ -123,28 +131,82 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
 
   const isDark = mounted && theme === "dark"
 
-  // Memoize line numbers — highlight error lines in red
+  // Measure wrapped line heights so line numbers / overlays stay aligned
+  const runMeasurement = useCallback(() => {
+    const textarea = textareaRef.current
+    const measure = measureRef.current
+    if (!textarea || !measure) return
+
+    if (!wordWrap) {
+      const h = fontSize * 1.5
+      setLineHeights(lines.map(() => h))
+      return
+    }
+
+    const computed = window.getComputedStyle(textarea)
+    measure.style.width = `${textarea.clientWidth}px`
+    measure.style.paddingLeft = computed.paddingLeft
+    measure.style.paddingRight = computed.paddingRight
+    measure.style.boxSizing = "border-box"
+    measure.style.fontFamily = computed.fontFamily
+    measure.style.fontSize = computed.fontSize
+    measure.style.fontWeight = computed.fontWeight
+    measure.style.fontStyle = computed.fontStyle
+    measure.style.lineHeight = computed.lineHeight
+    measure.style.letterSpacing = computed.letterSpacing
+    measure.style.tabSize = computed.tabSize
+
+    const children = measure.children
+    const heights: number[] = []
+    for (let i = 0; i < children.length; i++) {
+      heights.push((children[i] as HTMLElement).offsetHeight)
+    }
+    setLineHeights(heights)
+  }, [lines, fontSize, wordWrap])
+
+  const measureTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+
+  // Debounced measurement on content / font / wrap changes
+  useEffect(() => {
+    if (measureTimeoutRef.current) clearTimeout(measureTimeoutRef.current)
+    measureTimeoutRef.current = setTimeout(() => runMeasurement(), 50)
+    return () => {
+      if (measureTimeoutRef.current) clearTimeout(measureTimeoutRef.current)
+    }
+  }, [runMeasurement])
+
+  // Immediate measurement on textarea resize
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea || !wordWrap) return
+    const observer = new ResizeObserver(() => runMeasurement())
+    observer.observe(textarea)
+    return () => observer.disconnect()
+  }, [runMeasurement, wordWrap])
+
+  // Memoize line numbers — subtle red indicator for error lines
   const lineNumbers = useMemo(() => {
     const errorLineSet = new Set(errorLines.map((e) => e.line))
+    const fallbackHeight = fontSize * 1.5
     return lines.map((_, i) => {
       const hasError = errorLineSet.has(i + 1)
+      const h = lineHeights[i] ?? fallbackHeight
       return (
         <div
           key={i}
+          style={{ height: `${h}px` }}
           className={cn(
-            "h-[1.5em] flex items-center justify-end pr-3 text-xs border-r transition-colors relative",
-            hasError
-              ? "text-white bg-destructive/80 border-destructive font-bold"
-              : "text-muted-foreground border-border/30"
+            "flex items-center justify-end pr-3 text-xs border-r border-border/30 transition-colors",
+            hasError ? "text-destructive font-semibold" : "text-muted-foreground"
           )}
           title={hasError ? errorLines.find((e) => e.line === i + 1)?.message : undefined}
         >
-          {hasError && <span className="absolute left-1 w-1.5 h-1.5 rounded-full bg-white" />}
+          {hasError && <span className="mr-1.5 w-1 h-1 rounded-full bg-destructive inline-block" />}
           {i + 1}
         </div>
       )
     })
-  }, [lines.length, errorLines])
+  }, [lines.length, errorLines, lineHeights, fontSize])
 
   // Memoize highlighted content — groups consecutive same-token chars into single spans
   const highlightedContent = useMemo(() => {
@@ -192,13 +254,14 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
         )
       }
 
+      const h = lineHeights[lineIdx] ?? fontSize * 1.5
       return (
-        <div key={lineIdx}>
+        <div key={lineIdx} style={{ height: `${h}px` }}>
           {spans.length > 0 ? spans : <span>&nbsp;</span>}
         </div>
       )
     })
-  }, [canHighlight, deferredLines, lineOffsets, tokens, isDark])
+  }, [canHighlight, deferredLines, lineOffsets, tokens, isDark, lineHeights, fontSize])
 
   return (
     <div
@@ -215,7 +278,7 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
         {/* Line Numbers */}
         <div
           data-line-numbers
-          className="overflow-hidden bg-muted/20 select-none z-10"
+          className="overflow-hidden bg-muted/20 select-none z-10 pt-4 pb-4"
           style={{ fontSize: `${fontSize}px` }}
         >
           {lineNumbers}
@@ -240,7 +303,39 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
             </div>
           )}
 
-          {/* Textarea — sits above highlight layer with z-10 */}
+          {/* Error background layer — subtle light red for entire line width */}
+          {errorLines.length > 0 && (
+            <div
+              ref={errorBgRef}
+              className="absolute inset-0 pointer-events-none overflow-hidden font-mono text-sm p-4 z-[1]"
+              style={{
+                fontSize: `${fontSize}px`,
+                lineHeight: "1.5em",
+                whiteSpace: wordWrap ? "pre-wrap" : "pre",
+                wordBreak: wordWrap ? "break-word" : "normal",
+                tabSize: tabSize,
+                color: "transparent",
+              }}
+            >
+              {lines.map((_, i) => {
+                const hasError = errorLines.some((e) => e.line === i + 1)
+                const h = lineHeights[i] ?? fontSize * 1.5
+                return (
+                  <div
+                    key={i}
+                    style={{ height: `${h}px` }}
+                    className={cn(
+                      hasError
+                        ? "bg-destructive/15 border-l-2 border-destructive/40"
+                        : ""
+                    )}
+                  />
+                )
+              })}
+            </div>
+          )}
+
+          {/* Textarea — sits above all layers with z-10 */}
           <textarea
             ref={textareaRef}
             value={content}
@@ -264,25 +359,6 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
             autoCorrect="off"
             wrap={wordWrap ? "soft" : "off"}
           />
-
-          {/* Error line indicators — thin red bars on the left of each error line */}
-          {errorLines.length > 0 && (
-            <div className="absolute left-0 top-0 bottom-0 w-full pointer-events-none z-20 overflow-hidden">
-              {errorLines.map((err) => {
-                const top = (err.line - 1) * fontSize * 1.5 + 16 // 16px = p-4 top padding
-                return (
-                  <div
-                    key={err.line}
-                    className="absolute left-0 right-0 bg-destructive/15 border-l-[3px] border-destructive"
-                    style={{
-                      top: `${top}px`,
-                      height: `${fontSize * 1.5}px`,
-                    }}
-                  />
-                )
-              })}
-            </div>
-          )}
         </div>
       </div>
 
@@ -302,6 +378,32 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Hidden measurement div for wrapped line heights */}
+      <div
+        ref={measureRef}
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          left: -9999,
+          top: -9999,
+          visibility: "hidden",
+          pointerEvents: "none",
+        }}
+      >
+        {lines.map((line, i) => (
+          <div
+            key={i}
+            style={{
+              whiteSpace: wordWrap ? "pre-wrap" : "pre",
+              wordBreak: wordWrap ? "break-word" : "normal",
+              minHeight: `${fontSize * 1.5}px`,
+            }}
+          >
+            {line || "\u00A0"}
+          </div>
+        ))}
       </div>
     </div>
   )

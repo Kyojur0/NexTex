@@ -347,6 +347,20 @@ l.20 \\badcmd
         assert len(logs) == 0
         assert len(error_lines) == 0
 
+    def test_parse_error_with_inserted_text_context(self):
+        """pdflatex often inserts <inserted text> between ! and l.N — we must scan past it."""
+        stdout = """! Missing $ inserted.
+<inserted text> 
+                $
+l.22 \\textbf{Hello}
+                    World"""
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 1
+        assert logs[0]["type"] == "error"
+        assert len(error_lines) == 1
+        assert error_lines[0]["line"] == 22
+        assert "Missing $ inserted" in error_lines[0]["message"]
+
     def test_stderr_included(self):
         stderr = "! Emergency stop."
         logs, error_lines = _parse_compile_logs("", stderr)
