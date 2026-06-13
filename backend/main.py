@@ -492,6 +492,66 @@ class CompileBody(BaseModel):
     compiler: str = "pdflatex"
 
 
+# Packages that visual-editor blocks commonly need. The backend injects them
+# only when the source actually uses the corresponding commands/environments
+# and the package is not already loaded.
+_PACKAGE_RULES = [
+    ("amsmath", [r"\\begin\{equation\}", r"\\begin\{align\}", r"\\begin\{gather\}"]),
+    ("graphicx", [r"\\includegraphics"]),
+    ("listings", [r"\\begin\{lstlisting\}"]),
+    ("array", [r"\\begin\{tabular\}"]),
+    ("geometry", [r"\\usepackage\[.*\]\{geometry\}"]),  # keep; geometry is common
+]
+
+
+def _detect_missing_packages(content: str) -> list[str]:
+    """Return package names the content appears to need but doesn't already load."""
+    missing: list[str] = []
+    for pkg, patterns in _PACKAGE_RULES:
+        # Already loaded?
+        if re.search(rf"\\usepackage\s*(?:\[[^\]]*\])?\s*\{{{re.escape(pkg)}\}}", content):
+            continue
+        # Required by content?
+        for pat in patterns:
+            if re.search(pat, content):
+                missing.append(pkg)
+                break
+    return missing
+
+
+def _preprocess_latex_content(content: str) -> str:
+    """Ensure content can compile by injecting required packages or wrapping it."""
+    has_documentclass = r"\\documentclass" in content
+
+    if not has_documentclass:
+        # The user is probably working in the visual editor with no preamble.
+        # Wrap the content in a minimal article template with required packages.
+        packages = _detect_missing_packages(content)
+        preamble = "\n".join(f"\\usepackage{{{pkg}}}" for pkg in packages)
+        if preamble:
+            preamble = "\n" + preamble + "\n"
+        return (
+            "\\documentclass[11pt]{article}\n"
+            "\\usepackage[margin=1in]{geometry}\n"
+            f"{preamble}"
+            "\\begin{document}\n\n"
+            f"{content}\n\n"
+            "\\end{document}\n"
+        )
+
+    # Full document: inject missing packages right after \documentclass.
+    missing = _detect_missing_packages(content)
+    if not missing:
+        return content
+
+    package_lines = "\n".join(f"\\usepackage{{{pkg}}}" for pkg in missing)
+    # Insert after the first \documentclass line.
+    def replacer(match: re.Match) -> str:
+        return f"{match.group(0)}\n{package_lines}"
+
+    return re.sub(r"(\\documentclass(?:\[[^\]]*\])?\{[^}]+\})", replacer, content, count=1)
+
+
 class CompileResult(BaseModel):
     build_id: str
     success: bool
@@ -519,6 +579,13 @@ async def compile_latex(body: CompileBody):
     build_dir = _get_build_output_dir() / build_id
     build_dir.mkdir(parents=True, exist_ok=True)
 
+    # Preprocess source so that visual-editor blocks compile even when the
+    # original file is missing required packages (listings, graphicx, amsmath, ...).
+    original_content = source.read_text(encoding="utf-8")
+    processed_content = _preprocess_latex_content(original_content)
+    temp_source = build_dir / source.name
+    temp_source.write_text(processed_content, encoding="utf-8")
+
     try:
         result = subprocess.run(
             [
@@ -526,7 +593,7 @@ async def compile_latex(body: CompileBody):
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 f"-output-directory={build_dir}",
-                source.name,
+                str(temp_source),
             ],
             capture_output=True,
             text=True,

@@ -21,7 +21,15 @@ import main as main_module
 main_module.CONFIG_PATH = TEST_CONFIG_PATH
 main_module.DEFAULT_ROOT = TEST_DEFAULT_ROOT.resolve()
 
-from main import app, _resolve_safe, _is_path_inside, _get_active_workspace, _parse_compile_logs
+from main import (
+    app,
+    _resolve_safe,
+    _is_path_inside,
+    _get_active_workspace,
+    _parse_compile_logs,
+    _detect_missing_packages,
+    _preprocess_latex_content,
+)
 
 client = TestClient(app)
 
@@ -381,3 +389,66 @@ class TestConfig:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "NexTex" in resp.json()["message"]
+
+
+class TestLatexPreprocessing:
+    def test_detect_missing_packages_for_visual_editor_blocks(self):
+        content = (
+            "\\begin{equation}\nE=mc^2\n\\end{equation}\n"
+            "\\includegraphics{img.png}\n"
+            "\\begin{lstlisting}\nprint('hi')\n\\end{lstlisting}\n"
+            "\\begin{tabular}{ll}\na & b\\end{tabular}\n"
+        )
+        missing = _detect_missing_packages(content)
+        assert "amsmath" in missing
+        assert "graphicx" in missing
+        assert "listings" in missing
+        assert "array" in missing
+
+    def test_detect_missing_packages_skips_already_loaded(self):
+        content = (
+            "\\documentclass{article}\n"
+            "\\usepackage{amsmath}\n"
+            "\\begin{document}\n"
+            "\\begin{equation}\nE=mc^2\n\\end{equation}\n"
+            "\\end{document}\n"
+        )
+        missing = _detect_missing_packages(content)
+        assert "amsmath" not in missing
+
+    def test_preprocess_wraps_content_without_documentclass(self):
+        content = "\\section{Hello}\n\\begin{lstlisting}\nhi\n\\end{lstlisting}"
+        processed = _preprocess_latex_content(content)
+        assert "\\documentclass" in processed
+        assert "\\begin{document}" in processed
+        assert "\\end{document}" in processed
+        assert "\\usepackage{listings}" in processed
+        assert content in processed
+
+    def test_preprocess_injects_missing_packages_into_full_document(self):
+        content = (
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "\\begin{equation}\nx\\end{equation}\n"
+            "\\begin{lstlisting}\ny\\end{lstlisting}\n"
+            "\\end{document}\n"
+        )
+        processed = _preprocess_latex_content(content)
+        assert "\\usepackage{amsmath}" in processed
+        assert "\\usepackage{listings}" in processed
+        # Packages should appear after \documentclass and before \begin{document}
+        doc_class_pos = processed.find("\\documentclass")
+        amsmath_pos = processed.find("\\usepackage{amsmath}")
+        bdoc_pos = processed.find("\\begin{document}")
+        assert doc_class_pos < amsmath_pos < bdoc_pos
+
+    def test_preprocess_does_not_duplicate_packages(self):
+        content = (
+            "\\documentclass{article}\n"
+            "\\usepackage{listings}\n"
+            "\\begin{document}\n"
+            "\\begin{lstlisting}\nhi\\end{lstlisting}\n"
+            "\\end{document}\n"
+        )
+        processed = _preprocess_latex_content(content)
+        assert processed.count("\\usepackage{listings}") == 1
