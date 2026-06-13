@@ -164,7 +164,7 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
     setLineHeights(heights)
   }, [lines, fontSize, wordWrap])
 
-  const measureTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const measureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Debounced measurement on content / font / wrap changes
   useEffect(() => {

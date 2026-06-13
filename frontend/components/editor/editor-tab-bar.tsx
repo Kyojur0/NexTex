@@ -13,6 +13,7 @@ export const EditorTabBar = memo(function EditorTabBar() {
     <div className="flex items-center justify-end gap-1 pb-2 border-b border-border/60">
       <div className="inline-flex items-center bg-muted/60 rounded-lg p-[3px] gap-[2px]">
         <button
+          data-testid="text-editor-tab"
           onClick={() => setActiveEditorTab("text")}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150",
@@ -25,6 +26,7 @@ export const EditorTabBar = memo(function EditorTabBar() {
           Text Editor
         </button>
         <button
+          data-testid="visual-editor-tab"
           onClick={() => setActiveEditorTab("visual")}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150",
