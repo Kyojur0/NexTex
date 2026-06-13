@@ -19,6 +19,7 @@ export interface BlockPlugin<T = unknown> {
   type: BlockType
   label: string
   icon: LucideIcon
+  color: string
   defaultData: T
   renderConfig: (props: {
     block: VisualBlock<T>

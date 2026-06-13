@@ -1,6 +1,8 @@
 "use client"
 
 import { Type } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import type { BlockPlugin } from "../types"
 
 export interface ParagraphData {
@@ -11,15 +13,19 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
   type: "paragraph",
   label: "Paragraph",
   icon: Type,
+  color: "#64748b",
   defaultData: { text: "Enter your text here..." },
   renderConfig: ({ block, onChange }) => (
-    <textarea
-      value={block.data.text}
-      onChange={(e) => onChange({ ...block.data, text: e.target.value })}
-      rows={4}
-      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-sans resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-      placeholder="Type paragraph text..."
-    />
+    <div className="space-y-2">
+      <Label className="text-xs text-muted-foreground">Text</Label>
+      <Textarea
+        value={block.data.text}
+        onChange={(e) => onChange({ ...block.data, text: e.target.value })}
+        rows={4}
+        className="resize-y text-sm"
+        placeholder="Type paragraph text..."
+      />
+    </div>
   ),
   renderPreview: ({ block }) => (
     <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap">

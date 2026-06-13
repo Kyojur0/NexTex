@@ -2,6 +2,15 @@
 
 import { Heading1 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { BlockPlugin } from "../types"
 
 export interface SectionData {
@@ -13,31 +22,36 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
   type: "section",
   label: "Section",
   icon: Heading1,
+  color: "#6366f1",
   defaultData: { level: "section", title: "New Section" },
   renderConfig: ({ block, onChange }) => (
     <div className="space-y-3">
-      <div>
-        <label className="text-xs font-medium text-muted-foreground">Level</label>
-        <select
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Level</Label>
+        <Select
           value={block.data.level}
-          onChange={(e) =>
-            onChange({ ...block.data, level: e.target.value as SectionData["level"] })
+          onValueChange={(value) =>
+            onChange({ ...block.data, level: value as SectionData["level"] })
           }
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
-          <option value="section">Section</option>
-          <option value="subsection">Subsection</option>
-          <option value="subsubsection">Subsubsection</option>
-        </select>
+          <SelectTrigger className="text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="section">Section</SelectItem>
+            <SelectItem value="subsection">Subsection</SelectItem>
+            <SelectItem value="subsubsection">Subsubsection</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <div>
-        <label className="text-xs font-medium text-muted-foreground">Title</label>
-        <input
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Title</Label>
+        <Input
           type="text"
           value={block.data.title}
           onChange={(e) => onChange({ ...block.data, title: e.target.value })}
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="Section title"
+          className="text-sm"
         />
       </div>
     </div>

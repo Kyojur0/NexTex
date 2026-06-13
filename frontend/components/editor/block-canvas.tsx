@@ -1,6 +1,7 @@
 "use client"
 
 import { memo } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import {
   DndContext,
   closestCenter,
@@ -88,7 +89,11 @@ export const BlockCanvas = memo(function BlockCanvas({
           )}
         >
           {blocks.length === 0 ? (
-            <div className="flex flex-col items-center text-center gap-4 text-muted-foreground/60 max-w-xs">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center text-center gap-4 text-muted-foreground/60 max-w-xs"
+            >
               <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center">
                 <LayoutTemplate className="h-8 w-8 opacity-50" />
               </div>
@@ -102,17 +107,19 @@ export const BlockCanvas = memo(function BlockCanvas({
                 <MousePointer2 className="h-3 w-3" />
                 <span>Drag blocks to reorder</span>
               </div>
-            </div>
+            </motion.div>
           ) : (
-            blocks.map((block) => (
-              <BlockRenderer
-                key={block.id}
-                block={block}
-                onChange={onChange}
-                onDelete={onDelete}
-                onDuplicate={onDuplicate}
-              />
-            ))
+            <AnimatePresence mode="popLayout">
+              {blocks.map((block) => (
+                <BlockRenderer
+                  key={block.id}
+                  block={block}
+                  onChange={onChange}
+                  onDelete={onDelete}
+                  onDuplicate={onDuplicate}
+                />
+              ))}
+            </AnimatePresence>
           )}
         </div>
       </SortableContext>

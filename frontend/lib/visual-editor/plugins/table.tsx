@@ -1,6 +1,9 @@
 "use client"
 
 import { Table } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import type { BlockPlugin } from "../types"
 
 export interface TableData {
@@ -29,6 +32,7 @@ export const tablePlugin: BlockPlugin<TableData> = {
   type: "table",
   label: "Table",
   icon: Table,
+  color: "#f59e0b",
   defaultData: {
     rows: [
       ["A", "B", "C"],
@@ -40,9 +44,9 @@ export const tablePlugin: BlockPlugin<TableData> = {
     const value = rowsToText(block.data.rows)
     return (
       <div className="space-y-3">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Cells (rows separated by newlines, columns by |)</label>
-          <textarea
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Cells (rows separated by newlines, columns by |)</Label>
+          <Textarea
             value={value}
             onChange={(e) =>
               onChange({
@@ -51,18 +55,18 @@ export const tablePlugin: BlockPlugin<TableData> = {
               })
             }
             rows={5}
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+            className="font-mono text-sm resize-y"
             placeholder="A | B | C&#10;1 | 2 | 3"
           />
         </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Caption</label>
-          <input
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Caption</Label>
+          <Input
             type="text"
             value={block.data.caption}
             onChange={(e) => onChange({ ...block.data, caption: e.target.value })}
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="Table caption"
+            className="text-sm"
           />
         </div>
       </div>
@@ -71,7 +75,7 @@ export const tablePlugin: BlockPlugin<TableData> = {
   renderPreview: ({ block }) => {
     const rows = block.data.rows
     if (rows.length === 0) {
-      return <p className="text-sm italic text-muted-foreground">Empty table</p>
+      return <p className="text-sm italic text-muted-foreground/70">Empty table</p>
     }
     const colCount = Math.max(1, ...rows.map((r) => r.length))
     return (
@@ -81,7 +85,7 @@ export const tablePlugin: BlockPlugin<TableData> = {
             {rows.map((row, ri) => (
               <tr key={ri} className="border-b border-border/60 last:border-0">
                 {Array.from({ length: colCount }).map((_, ci) => (
-                  <td key={ci} className="px-2 py-1 text-foreground/90">
+                  <td key={ci} className="px-2 py-1 text-foreground/85">
                     {row[ci] || "\u00A0"}
                   </td>
                 ))}

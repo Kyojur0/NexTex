@@ -1,6 +1,7 @@
 "use client"
 
 import { memo, useState, useCallback } from "react"
+import { motion } from "framer-motion"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { getPlugin } from "@/lib/visual-editor/plugins"
@@ -59,12 +60,21 @@ export const BlockRenderer = memo(function BlockRenderer({
   const config = plugin.renderConfig({ block, onChange: handleChange })
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       data-testid="block-card"
-      style={style}
+      layout
+      initial={{ opacity: 0, y: 16, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.15 } }}
+      transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
+      style={{
+        ...style,
+        borderLeftWidth: "3px",
+        borderLeftColor: plugin.color,
+      }}
       className={cn(
-        "group relative rounded-2xl border bg-card transition-all duration-200",
+        "group relative rounded-2xl border bg-card",
         isDragging || isOverlay
           ? "border-primary/30 shadow-floating ring-1 ring-primary/10 opacity-95 rotate-1"
           : "border-border/40 shadow-elevated hover:shadow-floating hover:border-border/60"
@@ -81,8 +91,11 @@ export const BlockRenderer = memo(function BlockRenderer({
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
-          <div className="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center">
-            <Icon className="h-3 w-3 text-primary/80" />
+          <div
+            className="w-5 h-5 rounded-md flex items-center justify-center"
+            style={{ backgroundColor: `${plugin.color}20`, color: plugin.color }}
+          >
+            <Icon className="h-3 w-3" />
           </div>
           <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
             {plugin.label}
@@ -129,6 +142,6 @@ export const BlockRenderer = memo(function BlockRenderer({
           {config}
         </div>
       )}
-    </div>
+    </motion.div>
   )
 })

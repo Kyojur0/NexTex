@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react"
 import { Sigma } from "lucide-react"
 import katex from "katex"
 import "katex/dist/katex.min.css"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import type { BlockPlugin } from "../types"
 
 export interface MathData {
@@ -14,15 +16,16 @@ export const mathPlugin: BlockPlugin<MathData> = {
   type: "math",
   label: "Math",
   icon: Sigma,
+  color: "#8b5cf6",
   defaultData: { latex: "E = mc^2" },
   renderConfig: ({ block, onChange }) => (
     <div className="space-y-2">
-      <label className="text-xs font-medium text-muted-foreground">LaTeX</label>
-      <textarea
+      <Label className="text-xs text-muted-foreground">LaTeX</Label>
+      <Textarea
         value={block.data.latex}
         onChange={(e) => onChange({ ...block.data, latex: e.target.value })}
         rows={4}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+        className="font-mono text-sm resize-y"
         placeholder="e.g. E = mc^2"
       />
     </div>

@@ -36,8 +36,14 @@ export const BlockSidebar = memo(function BlockSidebar({ onAdd }: BlockSidebarPr
                 "transition-all duration-150 group text-left"
               )}
             >
-              <div className="w-6 h-6 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                <Icon className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors"
+                style={{
+                  backgroundColor: `${plugin.color}20`,
+                  color: plugin.color,
+                }}
+              >
+                <Icon className="h-3.5 w-3.5" />
               </div>
               <span className="truncate font-medium">{plugin.label}</span>
               <Plus className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />

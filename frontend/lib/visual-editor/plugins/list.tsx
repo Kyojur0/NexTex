@@ -1,6 +1,15 @@
 "use client"
 
 import { List } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { BlockPlugin } from "../types"
 
 export interface ListData {
@@ -12,27 +21,32 @@ export const listPlugin: BlockPlugin<ListData> = {
   type: "list",
   label: "List",
   icon: List,
+  color: "#10b981",
   defaultData: { kind: "itemize", items: ["First item", "Second item"] },
   renderConfig: ({ block, onChange }) => {
     const value = block.data.items.join("\n")
     return (
       <div className="space-y-3">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">List type</label>
-          <select
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">List type</Label>
+          <Select
             value={block.data.kind}
-            onChange={(e) =>
-              onChange({ ...block.data, kind: e.target.value as ListData["kind"] })
+            onValueChange={(value) =>
+              onChange({ ...block.data, kind: value as ListData["kind"] })
             }
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="itemize">Bullet list</option>
-            <option value="enumerate">Numbered list</option>
-          </select>
+            <SelectTrigger className="text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="itemize">Bullet list</SelectItem>
+              <SelectItem value="enumerate">Numbered list</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Items (one per line)</label>
-          <textarea
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Items (one per line)</Label>
+          <Textarea
             value={value}
             onChange={(e) =>
               onChange({
@@ -41,7 +55,7 @@ export const listPlugin: BlockPlugin<ListData> = {
               })
             }
             rows={5}
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-sans resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+            className="resize-y text-sm"
             placeholder="First item&#10;Second item"
           />
         </div>
@@ -51,9 +65,9 @@ export const listPlugin: BlockPlugin<ListData> = {
   renderPreview: ({ block }) => {
     const ListTag = block.data.kind === "enumerate" ? "ol" : "ul"
     return (
-      <ListTag className="list-inside text-sm text-foreground/90 leading-relaxed space-y-0.5">
+      <ListTag className="list-inside text-sm text-foreground/85 leading-relaxed space-y-0.5">
         {block.data.items.length === 0 ? (
-          <li className="italic text-muted-foreground">Empty list</li>
+          <li className="italic text-muted-foreground/70">Empty list</li>
         ) : (
           block.data.items.map((item, i) => <li key={i}>{item}</li>)
         )}

@@ -1,6 +1,9 @@
 "use client"
 
 import { Code } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import type { BlockPlugin } from "../types"
 
 export interface CodeData {
@@ -12,35 +15,36 @@ export const codePlugin: BlockPlugin<CodeData> = {
   type: "code",
   label: "Code",
   icon: Code,
+  color: "#f43f5e",
   defaultData: { language: "", code: "console.log(\"hello\")" },
   renderConfig: ({ block, onChange }) => (
     <div className="space-y-3">
-      <div>
-        <label className="text-xs font-medium text-muted-foreground">Language (optional)</label>
-        <input
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Language (optional)</Label>
+        <Input
           type="text"
           value={block.data.language}
           onChange={(e) => onChange({ ...block.data, language: e.target.value })}
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="e.g. python"
+          className="text-sm"
         />
       </div>
-      <div>
-        <label className="text-xs font-medium text-muted-foreground">Code</label>
-        <textarea
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Code</Label>
+        <Textarea
           value={block.data.code}
           onChange={(e) => onChange({ ...block.data, code: e.target.value })}
           rows={6}
-          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+          className="font-mono text-sm resize-y"
           placeholder="Paste code here..."
         />
       </div>
     </div>
   ),
   renderPreview: ({ block }) => (
-    <div className="bg-muted/40 rounded-md p-3 overflow-x-auto">
+    <div className="bg-muted/40 rounded-xl p-3 overflow-x-auto">
       <pre className="font-mono text-xs text-foreground/80 whitespace-pre">
-        <code>{block.data.code || <span className="italic text-muted-foreground">Empty code block</span>}</code>
+        <code>{block.data.code || <span className="italic text-muted-foreground/70">Empty code block</span>}</code>
       </pre>
     </div>
   ),
