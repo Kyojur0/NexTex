@@ -10,35 +10,53 @@ export const EditorTabBar = memo(function EditorTabBar() {
   const setActiveEditorTab = useEditorStore((s) => s.setActiveEditorTab)
 
   return (
-    <div className="flex items-center justify-end gap-1 pb-2 border-b border-border/60">
-      <div className="inline-flex items-center bg-muted/60 rounded-lg p-[3px] gap-[2px]">
-        <button
-          data-testid="text-editor-tab"
+    <div className="flex items-center justify-end pb-3">
+      <div className="inline-flex items-center bg-muted/70 rounded-xl p-1 gap-1">
+        <TabButton
+          testId="text-editor-tab"
+          isActive={activeTab === "text"}
           onClick={() => setActiveEditorTab("text")}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150",
-            activeTab === "text"
-              ? "bg-background text-foreground shadow-sm border border-border/50"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          )}
-        >
-          <FileCode className="h-3.5 w-3.5" />
-          Text Editor
-        </button>
-        <button
-          data-testid="visual-editor-tab"
+          icon={<FileCode className="h-3.5 w-3.5" />}
+          label="Text"
+        />
+        <TabButton
+          testId="visual-editor-tab"
+          isActive={activeTab === "visual"}
           onClick={() => setActiveEditorTab("visual")}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150",
-            activeTab === "visual"
-              ? "bg-background text-foreground shadow-sm border border-border/50"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          )}
-        >
-          <LayoutTemplate className="h-3.5 w-3.5" />
-          Visual Editor
-        </button>
+          icon={<LayoutTemplate className="h-3.5 w-3.5" />}
+          label="Visual"
+        />
       </div>
     </div>
   )
 })
+
+function TabButton({
+  testId,
+  isActive,
+  onClick,
+  icon,
+  label,
+}: {
+  testId: string
+  isActive: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+}) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-all duration-200",
+        isActive
+          ? "bg-background text-foreground shadow-elevated"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}

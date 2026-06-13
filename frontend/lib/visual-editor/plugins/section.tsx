@@ -1,6 +1,7 @@
 "use client"
 
 import { Heading1 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { BlockPlugin } from "../types"
 
 export interface SectionData {
@@ -44,14 +45,19 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
   renderPreview: ({ block }) => {
     const sizeClass =
       block.data.level === "section"
-        ? "text-lg"
-        : block.data.level === "subsection"
         ? "text-base"
-        : "text-sm"
+        : block.data.level === "subsection"
+        ? "text-sm"
+        : "text-xs"
     return (
-      <h3 className={`font-semibold tracking-tight text-foreground ${sizeClass}`}>
-        {block.data.title || <span className="italic text-muted-foreground">Untitled section</span>}
-      </h3>
+      <div className="flex items-baseline gap-2 min-w-0">
+        <span className={cn("text-[10px] font-bold uppercase tracking-wider text-primary/70 shrink-0", sizeClass)}>
+          {block.data.level}
+        </span>
+        <h3 className={cn("font-semibold tracking-tight text-foreground truncate", sizeClass)}>
+          {block.data.title || <span className="italic text-muted-foreground">Untitled section</span>}
+        </h3>
+      </div>
     )
   },
   toLaTeX: (data) => `\\${data.level}{${data.title.trim()}}`,

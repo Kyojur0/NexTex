@@ -22,8 +22,8 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
     />
   ),
   renderPreview: ({ block }) => (
-    <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-      {block.data.text || <span className="italic text-muted-foreground">Empty paragraph</span>}
+    <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap">
+      {block.data.text || <span className="italic text-muted-foreground/70">Empty paragraph</span>}
     </p>
   ),
   toLaTeX: (data) => data.text.trim(),

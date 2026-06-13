@@ -245,7 +245,7 @@ const SidebarPane = memo(function SidebarPane({
   return (
     <div
       style={{ width: `${width}px` }}
-      className="flex flex-col border-r border-border shrink-0 overflow-hidden"
+      className="flex flex-col border-r border-border/60 shrink-0 overflow-hidden bg-sidebar/30"
     >
       {showHistory ? (
         <VersionHistory onClose={() => useEditorStore.getState().setShowHistory(false)} />
@@ -513,10 +513,13 @@ function EditorInner() {
         <div
           onMouseDown={handleSidebarMouseDown}
           className={cn(
-            "w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors shrink-0",
+            "w-1.5 cursor-col-resize transition-colors shrink-0 relative group",
+            "bg-border/30 hover:bg-primary/30",
             isDragging && "bg-primary/40"
           )}
-        />
+        >
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-border/50 group-hover:bg-primary/40 transition-colors" />
+        </div>
 
         {/* Editor + Preview horizontal split */}
         <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
@@ -526,13 +529,14 @@ function EditorInner() {
             className="flex flex-col overflow-hidden transition-all duration-200 p-3"
           >
             {isLoading ? (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                Loading workspace...
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                <span className="text-sm">Loading workspace...</span>
               </div>
             ) : (
               <>
                 <EditorTabBar />
-                <div className="flex-1 overflow-hidden mt-2">
+                <div className="flex-1 overflow-hidden mt-3">
                   {activeEditorTab === "text" ? <EditorPane /> : <VisualEditor />}
                 </div>
               </>
@@ -543,13 +547,15 @@ function EditorInner() {
           {showPreview && (
             <div
               onMouseDown={handleSplitMouseDown}
-              className="w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors shrink-0"
-            />
+              className="w-1.5 cursor-col-resize transition-colors shrink-0 relative group bg-border/30 hover:bg-primary/30"
+            >
+              <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-border/50 group-hover:bg-primary/40 transition-colors" />
+            </div>
           )}
 
           {/* PDF preview */}
           {showPreview && (
-            <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="flex flex-col overflow-hidden p-3">
+            <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="flex flex-col overflow-hidden p-3 pl-1.5">
               <PreviewPane />
             </div>
           )}

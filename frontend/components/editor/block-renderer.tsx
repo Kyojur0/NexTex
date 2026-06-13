@@ -4,7 +4,7 @@ import { memo, useState, useCallback } from "react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { getPlugin } from "@/lib/visual-editor/plugins"
-import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
+import type { AnyVisualBlock } from "@/lib/visual-editor/types"
 import { cn } from "@/lib/utils"
 import {
   GripVertical,
@@ -64,25 +64,27 @@ export const BlockRenderer = memo(function BlockRenderer({
       data-testid="block-card"
       style={style}
       className={cn(
-        "group relative rounded-lg border bg-background transition-all",
+        "group relative rounded-2xl border bg-card transition-all duration-200",
         isDragging || isOverlay
-          ? "border-primary/40 shadow-lg ring-1 ring-primary/20 opacity-95"
-          : "border-border/50 hover:border-border"
+          ? "border-primary/30 shadow-floating ring-1 ring-primary/10 opacity-95 rotate-1"
+          : "border-border/40 shadow-elevated hover:shadow-floating hover:border-border/60"
       )}
     >
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/40 bg-muted/20 rounded-t-lg">
+      <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/30 bg-muted/30 rounded-t-2xl">
         <div className="flex items-center gap-2">
           <button
             {...attributes}
             {...listeners}
-            className="p-1 rounded hover:bg-muted text-muted-foreground cursor-grab active:cursor-grabbing"
+            className="p-1 rounded-md hover:bg-muted text-muted-foreground cursor-grab active:cursor-grabbing transition-colors"
             aria-label="Drag to reorder"
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
-          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center">
+            <Icon className="h-3 w-3 text-primary/80" />
+          </div>
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
             {plugin.label}
           </span>
         </div>
@@ -90,7 +92,7 @@ export const BlockRenderer = memo(function BlockRenderer({
           <button
             data-testid="toggle-config"
             onClick={() => setShowConfig((s) => !s)}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title={showConfig ? "Hide config" : "Show config"}
           >
             {showConfig ? (
@@ -102,7 +104,7 @@ export const BlockRenderer = memo(function BlockRenderer({
           <button
             data-testid="duplicate-block"
             onClick={() => onDuplicate(block.id)}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title="Duplicate"
           >
             <Copy className="h-3.5 w-3.5" />
@@ -110,7 +112,7 @@ export const BlockRenderer = memo(function BlockRenderer({
           <button
             data-testid="delete-block"
             onClick={() => onDelete(block.id)}
-            className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
             title="Delete"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -123,7 +125,7 @@ export const BlockRenderer = memo(function BlockRenderer({
 
       {/* Config form */}
       {showConfig && (
-        <div className="px-4 py-3 border-t border-border/40 bg-muted/10">
+        <div className="px-4 py-3 border-t border-border/30 bg-muted/20 rounded-b-2xl">
           {config}
         </div>
       )}

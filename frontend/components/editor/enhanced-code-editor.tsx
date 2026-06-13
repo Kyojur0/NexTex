@@ -266,11 +266,14 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
   return (
     <div
       ref={containerRef}
-      className="flex flex-col h-full bg-editor-bg border border-border rounded-lg overflow-hidden"
+      className="flex flex-col h-full bg-editor-bg border border-border/60 rounded-xl overflow-hidden shadow-elevated"
     >
       {/* Header */}
-      <div className="h-9 border-b border-border bg-muted/30 px-4 flex items-center">
-        <span className="text-xs font-medium text-muted-foreground">{fileName}</span>
+      <div className="h-10 border-b border-border/40 bg-muted/40 px-4 flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
+          {fileName}
+        </span>
       </div>
 
       {/* Editor Area */}
@@ -363,14 +366,14 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
       </div>
 
       {/* Status Bar */}
-      <div className="h-7 border-t border-border bg-muted/20 px-4 flex items-center justify-between text-xs text-muted-foreground">
-        <span>{lines.length} lines</span>
-        <div className="flex items-center gap-3">
-          <span>{content.length} chars</span>
+      <div className="h-8 border-t border-border/40 bg-muted/40 px-4 flex items-center justify-between text-[11px] text-muted-foreground">
+        <span className="tabular-nums">{lines.length} lines</span>
+        <div className="flex items-center gap-4">
+          <span className="tabular-nums">{content.length.toLocaleString()} chars</span>
           {onAISpotlight && (
             <button
               onClick={onAISpotlight}
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors px-2 py-0.5 rounded-md hover:bg-muted"
               title="Open AI Spotlight (Cmd+K)"
             >
               <Sparkles className="h-3 w-3" />

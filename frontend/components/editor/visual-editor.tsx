@@ -6,16 +6,12 @@ import { useEditorStore } from "@/lib/store"
 import { parseLaTeXToBlocks } from "@/lib/visual-editor/parser"
 import { blocksToLaTeX } from "@/lib/visual-editor/serializer"
 import { getPlugin } from "@/lib/visual-editor/plugins"
-import type {
-  AnyVisualBlock,
-  BlockType,
-  VisualBlock,
-} from "@/lib/visual-editor/types"
+import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { createBlock } from "@/lib/visual-editor/types"
 import { BlockSidebar } from "./block-sidebar"
 import { BlockCanvas } from "./block-canvas"
 import { LatexOutputPanel } from "./latex-output-panel"
-import { Check, Pencil } from "lucide-react"
+import { Check, Pencil, Code2, Eye, LayoutTemplate } from "lucide-react"
 
 export const VisualEditor = memo(function VisualEditor() {
   const content = useEditorStore((s) => s.content)
@@ -36,7 +32,6 @@ export const VisualEditor = memo(function VisualEditor() {
   const contentRef = useRef(content)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync incoming content changes (e.g. switching from text editor)
   useEffect(() => {
     if (content !== contentRef.current) {
       setBlocks(parseLaTeXToBlocks(content))
@@ -116,7 +111,6 @@ export const VisualEditor = memo(function VisualEditor() {
       const idx = blocks.findIndex((b) => b.id === id)
       if (idx === -1) return
       const original = blocks[idx] as AnyVisualBlock
-      const plugin = getPlugin(original.type)
       const copy: AnyVisualBlock = createBlock(
         original.type,
         structuredClone(original.data)
@@ -130,50 +124,49 @@ export const VisualEditor = memo(function VisualEditor() {
   )
 
   const activeBlock = activeId ? blocks.find((b) => b.id === activeId) || null : null
-
   const latex = blocksToLaTeX(blocks)
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
       {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border/60 bg-muted/20">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-            Visual Editor
-          </span>
+      <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-muted/30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-foreground/90">
+            <LayoutTemplate className="h-4 w-4 text-primary/80" />
+            <span className="text-sm font-medium">Visual Editor</span>
+          </div>
           {dirty && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-[10px] text-yellow-600 dark:text-yellow-400">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-600 dark:text-amber-400">
               <Pencil className="h-2.5 w-2.5" />
               Unsaved
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowOutput((s) => !s)}
-            className={cn(
-              "text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors",
-              showOutput
-                ? "bg-foreground text-background"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {showOutput ? "Hide LaTeX" : "Show LaTeX"}
-          </button>
           {!dirty && blocks.length > 0 && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
               <Check className="h-3 w-3" />
               Synced
             </span>
           )}
         </div>
+        <button
+          onClick={() => setShowOutput((s) => !s)}
+          className={cn(
+            "inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg transition-all",
+            showOutput
+              ? "bg-foreground text-background shadow-elevated"
+              : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          )}
+        >
+          {showOutput ? <Eye className="h-3 w-3" /> : <Code2 className="h-3 w-3" />}
+          {showOutput ? "Hide LaTeX" : "Show LaTeX"}
+        </button>
       </div>
 
       {/* Main workspace */}
       <div className="flex-1 flex overflow-hidden">
         <BlockSidebar onAdd={handleAdd} />
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden bg-muted/10">
           <BlockCanvas
             blocks={blocks}
             activeId={activeId}
@@ -188,7 +181,7 @@ export const VisualEditor = memo(function VisualEditor() {
           {showOutput && (
             <>
               <div className="w-px bg-border/40 shrink-0" />
-              <div className="w-80 shrink-0">
+              <div className="w-72 shrink-0">
                 <LatexOutputPanel latex={latex} />
               </div>
             </>
@@ -197,15 +190,13 @@ export const VisualEditor = memo(function VisualEditor() {
       </div>
 
       {/* Status bar */}
-      <div className="shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-border/60 bg-muted/20 text-[10px] text-muted-foreground">
+      <div className="shrink-0 flex items-center justify-between px-4 py-2 border-t border-border/60 bg-muted/30 text-[11px] text-muted-foreground">
         <div className="flex items-center gap-3">
-          <span>{blocks.length} blocks</span>
-          <span>•</span>
+          <span className="tabular-nums">{blocks.length} blocks</span>
+          <span className="text-border">•</span>
           <span>Drag blocks by the grip handle to reorder</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span>Changes sync to the text editor automatically</span>
-        </div>
+        <span>Changes sync to the text editor automatically</span>
       </div>
     </div>
   )
