@@ -10,18 +10,24 @@ import {
   Maximize2,
   Moon,
   Sun,
+  PanelRight,
+  PanelRightClose,
 } from "lucide-react"
 
 interface PdfPreviewProps {
   fileName: string
   pdfUrl: string | null
   isBuilding: boolean
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 export const PdfPreview = memo(function PdfPreview({
   fileName,
   pdfUrl,
   isBuilding,
+  collapsed,
+  onToggleCollapse,
 }: PdfPreviewProps) {
   const [zoom, setZoom] = useState(100)
   const [darkMode, setDarkMode] = useState(false)
@@ -49,6 +55,23 @@ export const PdfPreview = memo(function PdfPreview({
     a.download = fileName
     a.click()
   }, [pdfUrl, fileName])
+
+  if (collapsed) {
+    return (
+      <div className="h-full w-10 flex flex-col items-center py-2 border-l border-border/60 bg-card/30 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 rounded-lg"
+          onClick={onToggleCollapse}
+          aria-label="Expand preview"
+          title="Expand preview"
+        >
+          <PanelRight className="h-4 w-4" />
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col bg-card border border-border/60 rounded-xl overflow-hidden shadow-elevated">
@@ -82,6 +105,13 @@ export const PdfPreview = memo(function PdfPreview({
             title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
           >
             {darkMode ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </ToolbarButton>
+          <div className="w-px h-4 bg-border/60 mx-1" />
+          <ToolbarButton
+            onClick={onToggleCollapse}
+            title="Collapse preview"
+          >
+            <PanelRightClose className="h-3.5 w-3.5" />
           </ToolbarButton>
         </div>
       </div>
@@ -130,7 +160,7 @@ function ToolbarButton({
   title,
 }: {
   children: React.ReactNode
-  onClick: () => void
+  onClick?: () => void
   disabled?: boolean
   title?: string
 }) {

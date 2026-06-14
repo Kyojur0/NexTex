@@ -185,7 +185,13 @@ const EditorPane = memo(function EditorPane() {
   )
 })
 
-const PreviewPane = memo(function PreviewPane() {
+const PreviewPane = memo(function PreviewPane({
+  collapsed,
+  onToggleCollapse,
+}: {
+  collapsed: boolean
+  onToggleCollapse: () => void
+}) {
   const pdfUrl = useEditorStore((s) => s.pdfUrl)
   const isBuilding = useEditorStore((s) => s.isBuilding)
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
@@ -199,6 +205,8 @@ const PreviewPane = memo(function PreviewPane() {
       fileName={fileName}
       pdfUrl={pdfUrl}
       isBuilding={isBuilding}
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
     />
   )
 })
@@ -336,6 +344,7 @@ function EditorInner() {
   const [isLoading, setIsLoading] = useState(true)
   const [splitRatio, setSplitRatio] = useState(0.55)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const splitDragging = useRef(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
 
@@ -553,7 +562,7 @@ function EditorInner() {
         <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
           {/* Code editor */}
           <div
-            style={{ width: showPreview ? `${splitRatio * 100}%` : "100%" }}
+            style={{ width: showPreview && !previewCollapsed ? `${splitRatio * 100}%` : "100%" }}
             className="flex flex-col overflow-hidden transition-all duration-200 p-3"
           >
             {isLoading ? (
@@ -571,8 +580,8 @@ function EditorInner() {
             )}
           </div>
 
-          {/* Horizontal divider (only when preview visible) */}
-          {showPreview && (
+          {/* Horizontal divider (only when preview visible and expanded) */}
+          {showPreview && !previewCollapsed && (
             <div
               onMouseDown={handleSplitMouseDown}
               className="w-1.5 cursor-col-resize transition-colors shrink-0 relative group bg-border/30 hover:bg-primary/30"
@@ -583,9 +592,27 @@ function EditorInner() {
 
           {/* PDF preview */}
           {showPreview && (
-            <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="flex flex-col overflow-hidden p-3 pl-1.5">
-              <PreviewPane />
-            </div>
+            <>
+              {!previewCollapsed && (
+                <div
+                  style={{ width: `${(1 - splitRatio) * 100}%` }}
+                  className="flex flex-col overflow-hidden p-3 pl-1.5"
+                >
+                  <PreviewPane
+                    collapsed={previewCollapsed}
+                    onToggleCollapse={() => setPreviewCollapsed((c) => !c)}
+                  />
+                </div>
+              )}
+              {previewCollapsed && (
+                <div className="flex flex-col overflow-hidden py-3 pl-1.5">
+                  <PreviewPane
+                    collapsed={previewCollapsed}
+                    onToggleCollapse={() => setPreviewCollapsed((c) => !c)}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
