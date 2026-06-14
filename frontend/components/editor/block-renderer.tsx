@@ -1,36 +1,49 @@
 "use client"
 
-import { memo, useState, useCallback } from "react"
+import { memo, useCallback } from "react"
 import { motion } from "framer-motion"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { getPlugin } from "@/lib/visual-editor/plugins"
-import type { AnyVisualBlock } from "@/lib/visual-editor/types"
+import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { cn } from "@/lib/utils"
-import {
-  GripVertical,
-  Trash2,
-  Copy,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react"
+import { GripVertical } from "lucide-react"
 
 interface BlockRendererProps {
   block: AnyVisualBlock
+  isActive: boolean
   isOverlay?: boolean
+  index: number
+  total: number
   onChange: (id: string, data: unknown) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
+  onFocus: (id: string) => void
+  onBlur: () => void
+  onSplit?: (id: string, beforeData: unknown, afterData: unknown) => void
+  onMergeUp?: (id: string) => void
+  onInsertAfter?: (id: string, type: BlockType) => void
+  onMoveUp?: (id: string) => void
+  onMoveDown?: (id: string) => void
 }
 
 export const BlockRenderer = memo(function BlockRenderer({
   block,
+  isActive,
   isOverlay,
+  index,
+  total,
   onChange,
   onDelete,
   onDuplicate,
+  onFocus,
+  onBlur,
+  onSplit,
+  onMergeUp,
+  onInsertAfter,
+  onMoveUp,
+  onMoveDown,
 }: BlockRendererProps) {
-  const [showConfig, setShowConfig] = useState(false)
   const plugin = getPlugin(block.type)
   const Icon = plugin.icon
 
@@ -50,14 +63,35 @@ export const BlockRenderer = memo(function BlockRenderer({
   }
 
   const handleChange = useCallback(
-    (data: unknown) => {
-      onChange(block.id, data)
-    },
+    (data: unknown) => onChange(block.id, data),
     [block.id, onChange]
   )
 
-  const preview = plugin.renderPreview({ block })
-  const config = plugin.renderConfig({ block, onChange: handleChange })
+  const handleSplit = useCallback(
+    (beforeData: unknown, afterData: unknown) => onSplit?.(block.id, beforeData, afterData),
+    [block.id, onSplit]
+  )
+
+  const handleMergeUp = useCallback(
+    () => onMergeUp?.(block.id),
+    [block.id, onMergeUp]
+  )
+
+  const handleInsertAfter = useCallback(
+    (type: BlockType) => onInsertAfter?.(block.id, type),
+    [block.id, onInsertAfter]
+  )
+
+  const editor = plugin.renderEditor({
+    block,
+    isActive,
+    onChange: handleChange,
+    onSplit: plugin.isText ? handleSplit : undefined,
+    onMergeUp: plugin.isText ? handleMergeUp : undefined,
+    onInsertAfter: handleInsertAfter,
+    onFocus: () => onFocus(block.id),
+    onBlur,
+  })
 
   return (
     <motion.div
@@ -77,8 +111,10 @@ export const BlockRenderer = memo(function BlockRenderer({
         "group relative rounded-2xl border bg-card",
         isDragging || isOverlay
           ? "border-primary/30 shadow-floating ring-1 ring-primary/10 opacity-95 rotate-1"
-          : "border-border/40 shadow-elevated hover:shadow-floating hover:border-border/60"
+          : "border-border/40 shadow-elevated hover:shadow-floating hover:border-border/60",
+        isActive && "ring-1 ring-primary/10 border-border/60"
       )}
+      onClick={() => onFocus(block.id)}
     >
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/30 bg-muted/30 rounded-t-2xl">
@@ -88,6 +124,7 @@ export const BlockRenderer = memo(function BlockRenderer({
             {...listeners}
             className="p-1 rounded-md hover:bg-muted text-muted-foreground cursor-grab active:cursor-grabbing transition-colors"
             aria-label="Drag to reorder"
+            onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
@@ -101,47 +138,59 @@ export const BlockRenderer = memo(function BlockRenderer({
             {plugin.label}
           </span>
         </div>
-        <div className="flex items-center gap-0.5">
-          <button
-            data-testid="toggle-config"
-            onClick={() => setShowConfig((s) => !s)}
-            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title={showConfig ? "Hide config" : "Show config"}
-          >
-            {showConfig ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-          </button>
-          <button
-            data-testid="duplicate-block"
-            onClick={() => onDuplicate(block.id)}
-            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title="Duplicate"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-          <button
-            data-testid="delete-block"
-            onClick={() => onDelete(block.id)}
-            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-            title="Delete"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <ToolbarButton onClick={() => onMoveUp?.(block.id)} disabled={index === 0} title="Move up">
+            ↑
+          </ToolbarButton>
+          <ToolbarButton onClick={() => onMoveDown?.(block.id)} disabled={index === total - 1} title="Move down">
+            ↓
+          </ToolbarButton>
+          <ToolbarButton onClick={() => onDuplicate(block.id)} title="Duplicate">
+            ⧉
+          </ToolbarButton>
+          <ToolbarButton onClick={() => onDelete(block.id)} title="Delete" destructive>
+            ×
+          </ToolbarButton>
         </div>
       </div>
 
-      {/* Preview */}
-      <div className="px-4 py-3">{preview}</div>
-
-      {/* Config form */}
-      {showConfig && (
-        <div className="px-4 py-3 border-t border-border/30 bg-muted/20 rounded-b-2xl">
-          {config}
-        </div>
-      )}
+      {/* Editor */}
+      <div className="px-4 py-3">{editor}</div>
     </motion.div>
   )
 })
+
+function ToolbarButton({
+  onClick,
+  disabled,
+  title,
+  destructive,
+  children,
+}: {
+  onClick: () => void
+  disabled?: boolean
+  title: string
+  destructive?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        "h-6 w-6 flex items-center justify-center rounded-md transition-colors text-xs",
+        disabled && "opacity-30 cursor-not-allowed",
+        !disabled &&
+          (destructive
+            ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted")
+      )}
+    >
+      {children}
+    </button>
+  )
+}

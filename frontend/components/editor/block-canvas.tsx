@@ -1,7 +1,6 @@
 "use client"
 
 import { memo } from "react"
-import { AnimatePresence, motion } from "framer-motion"
 import {
   DndContext,
   closestCenter,
@@ -19,8 +18,10 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
-import type { AnyVisualBlock } from "@/lib/visual-editor/types"
+import { AnimatePresence, motion } from "framer-motion"
+import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { BlockRenderer } from "./block-renderer"
+import { InsertBlockButton } from "@/lib/visual-editor/components/insert-block-button"
 import { cn } from "@/lib/utils"
 import { LayoutTemplate, MousePointer2 } from "lucide-react"
 
@@ -28,28 +29,44 @@ interface BlockCanvasProps {
   blocks: AnyVisualBlock[]
   activeId: string | null
   activeBlock: AnyVisualBlock | null
+  focusedBlockId: string | null
   onReorder: (blocks: AnyVisualBlock[]) => void
   onChange: (id: string, data: unknown) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
+  onFocus: (id: string) => void
+  onBlur: () => void
   onDragStart: (id: string | null) => void
+  onSplit: (id: string, beforeData: unknown, afterData: unknown) => void
+  onMergeUp: (id: string) => void
+  onInsertAfter: (id: string, type: BlockType) => void
+  onInsertAt: (index: number, type: BlockType) => void
+  onMoveUp: (id: string) => void
+  onMoveDown: (id: string) => void
 }
 
 export const BlockCanvas = memo(function BlockCanvas({
   blocks,
   activeId,
   activeBlock,
+  focusedBlockId,
   onReorder,
   onChange,
   onDelete,
   onDuplicate,
+  onFocus,
+  onBlur,
   onDragStart,
+  onSplit,
+  onMergeUp,
+  onInsertAfter,
+  onInsertAt,
+  onMoveUp,
+  onMoveDown,
 }: BlockCanvasProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
+      activationConstraint: { distance: 5 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -84,7 +101,7 @@ export const BlockCanvas = memo(function BlockCanvas({
         <div
           data-testid="block-canvas"
           className={cn(
-            "flex-1 overflow-y-auto px-5 py-5 space-y-4",
+            "flex-1 overflow-y-auto px-5 py-5 space-y-1",
             blocks.length === 0 && "flex items-center justify-center"
           )}
         >
@@ -100,7 +117,7 @@ export const BlockCanvas = memo(function BlockCanvas({
               <div>
                 <p className="text-sm font-medium text-foreground/70">Your document is empty</p>
                 <p className="text-xs mt-1 leading-relaxed">
-                  Select a block from the palette on the left to start building your document.
+                  Select a block from the palette or click + to start building.
                 </p>
               </div>
               <div className="flex items-center gap-2 text-[10px]">
@@ -110,14 +127,26 @@ export const BlockCanvas = memo(function BlockCanvas({
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
-              {blocks.map((block) => (
-                <BlockRenderer
-                  key={block.id}
-                  block={block}
-                  onChange={onChange}
-                  onDelete={onDelete}
-                  onDuplicate={onDuplicate}
-                />
+              {blocks.map((block, idx) => (
+                <div key={block.id} className="space-y-1">
+                  <BlockRenderer
+                    block={block}
+                    isActive={focusedBlockId === block.id}
+                    index={idx}
+                    total={blocks.length}
+                    onChange={onChange}
+                    onDelete={onDelete}
+                    onDuplicate={onDuplicate}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                    onSplit={onSplit}
+                    onMergeUp={onMergeUp}
+                    onInsertAfter={onInsertAfter}
+                    onMoveUp={onMoveUp}
+                    onMoveDown={onMoveDown}
+                  />
+                  <InsertBlockButton onInsert={(type) => onInsertAt(idx + 1, type)} />
+                </div>
               ))}
             </AnimatePresence>
           )}
@@ -128,10 +157,15 @@ export const BlockCanvas = memo(function BlockCanvas({
         {activeBlock ? (
           <BlockRenderer
             block={activeBlock}
+            isActive={false}
             isOverlay
+            index={0}
+            total={1}
             onChange={() => {}}
             onDelete={() => {}}
             onDuplicate={() => {}}
+            onFocus={() => {}}
+            onBlur={() => {}}
           />
         ) : null}
       </DragOverlay>

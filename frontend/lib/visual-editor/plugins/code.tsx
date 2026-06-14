@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback } from "react"
 import { Code } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -16,38 +17,37 @@ export const codePlugin: BlockPlugin<CodeData> = {
   label: "Code",
   icon: Code,
   color: "#f43f5e",
-  defaultData: { language: "", code: "console.log(\"hello\")" },
-  renderConfig: ({ block, onChange }) => (
-    <div className="space-y-3">
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Language (optional)</Label>
-        <Input
-          type="text"
-          value={block.data.language}
-          onChange={(e) => onChange({ ...block.data, language: e.target.value })}
-          placeholder="e.g. python"
-          className="text-sm"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Code</Label>
+  defaultData: { language: "", code: "" },
+  isText: false,
+  renderEditor: ({ block, isActive, onChange, onFocus, onBlur }) => {
+    const handleChange = useCallback(
+      (patch: Partial<CodeData>) => onChange({ ...block.data, ...patch }),
+      [block.data, onChange]
+    )
+
+    return (
+      <div className="space-y-2" onFocus={onFocus} onBlur={onBlur}>
+        {isActive && (
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">Language</Label>
+            <Input
+              value={block.data.language}
+              onChange={(e) => handleChange({ language: e.target.value })}
+              placeholder="e.g. python"
+              className="h-7 text-xs w-32"
+            />
+          </div>
+        )}
         <Textarea
           value={block.data.code}
-          onChange={(e) => onChange({ ...block.data, code: e.target.value })}
-          rows={6}
-          className="font-mono text-sm resize-y"
+          onChange={(e) => handleChange({ code: e.target.value })}
+          rows={isActive ? 6 : 3}
+          className="font-mono text-xs resize-y bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/20"
           placeholder="Paste code here..."
         />
       </div>
-    </div>
-  ),
-  renderPreview: ({ block }) => (
-    <div className="bg-muted/40 rounded-xl p-3 overflow-x-auto">
-      <pre className="font-mono text-xs text-foreground/80 whitespace-pre">
-        <code>{block.data.code || <span className="italic text-muted-foreground/70">Empty code block</span>}</code>
-      </pre>
-    </div>
-  ),
+    )
+  },
   toLaTeX: (data) => {
     const opts = data.language ? `[language=${data.language}]` : ""
     return `\\begin{lstlisting}${opts}\n${data.code}\n\\end{lstlisting}`

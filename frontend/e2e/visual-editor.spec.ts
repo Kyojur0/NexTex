@@ -18,8 +18,7 @@ async function switchToVisualEditor(page: Page) {
 
 async function addBlock(page: Page, label: string) {
   await page.click(`[data-testid="block-palette-button-${label}"]`)
-  // Wait for a new block card to appear
-  await page.waitForTimeout(200)
+  await page.waitForTimeout(250)
 }
 
 async function getBlockCount(page: Page) {
@@ -28,6 +27,11 @@ async function getBlockCount(page: Page) {
 
 async function getLatexOutput(page: Page) {
   return page.locator('[data-testid="latex-output-panel"] code').innerText()
+}
+
+async function focusBlock(page: Page, cardLocator: ReturnType<Page["locator"]>) {
+  await cardLocator.click()
+  await page.waitForTimeout(150)
 }
 
 test.describe("Visual Block Editor", () => {
@@ -53,17 +57,29 @@ test.describe("Visual Block Editor", () => {
     expect(errors).toHaveLength(0)
   })
 
-  test("edits block config and updates preview and LaTeX", async ({ page }) => {
+  test("edits block inline and updates LaTeX output", async ({ page }) => {
     const errors = await collectConsoleErrors(page)
     await switchToVisualEditor(page)
 
+    // Clear pre-loaded blocks for a clean test
+    let cards = page.locator('[data-testid="block-card"]')
+    while (await cards.count() > 0) {
+      await cards.first().hover()
+      await cards.first().locator('button[title="Delete"]').click()
+      await page.waitForTimeout(150)
+    }
+
     await addBlock(page, "Section")
-    const card = page.locator('[data-testid="block-card"]').last()
-    await card.locator('[data-testid="toggle-config"]').click()
-    const titleInput = card.locator('input[placeholder="Section title"]')
-    await titleInput.waitFor({ state: "visible" })
-    await titleInput.fill("Introduction")
-    await page.keyboard.press("Tab")
+    cards = page.locator('[data-testid="block-card"]')
+    const card = cards.last()
+    const titleInput = card.locator('div[contenteditable]')
+    await titleInput.evaluate((el) => {
+      const div = el as HTMLDivElement
+      div.focus()
+      div.innerText = "Introduction"
+      div.dispatchEvent(new Event("input", { bubbles: true }))
+      div.blur()
+    })
 
     await page.waitForTimeout(300)
     const latex = await getLatexOutput(page)
@@ -72,19 +88,23 @@ test.describe("Visual Block Editor", () => {
     expect(errors).toHaveLength(0)
   })
 
-  test("duplicates and deletes blocks", async ({ page }) => {
+  test("duplicates and deletes blocks via hover toolbar", async ({ page }) => {
     const errors = await collectConsoleErrors(page)
     await switchToVisualEditor(page)
 
     await addBlock(page, "Paragraph")
     const countAfterAdd = await getBlockCount(page)
 
-    await page.click('[data-testid="block-card"]:first-child [data-testid="duplicate-block"]')
-    await page.waitForTimeout(200)
+    const card = page.locator('[data-testid="block-card"]').first()
+    await card.hover()
+    await card.locator('button[title="Duplicate"]').click()
+    await page.waitForTimeout(250)
     expect(await getBlockCount(page)).toBe(countAfterAdd + 1)
 
-    await page.click('[data-testid="block-card"]:first-child [data-testid="delete-block"]')
-    await page.waitForTimeout(200)
+    const firstCard = page.locator('[data-testid="block-card"]').first()
+    await firstCard.hover()
+    await firstCard.locator('button[title="Delete"]').click()
+    await page.waitForTimeout(250)
     expect(await getBlockCount(page)).toBe(countAfterAdd)
 
     expect(errors).toHaveLength(0)
@@ -101,7 +121,6 @@ test.describe("Visual Block Editor", () => {
     const first = cards.first()
     const second = cards.nth(1)
 
-    // Drag the second card above the first
     const firstBox = await first.boundingBox()
     const secondBox = await second.boundingBox()
     if (firstBox && secondBox) {
@@ -122,26 +141,36 @@ test.describe("Visual Block Editor", () => {
     const errors = await collectConsoleErrors(page)
     await switchToVisualEditor(page)
 
-    // Add a known block in visual editor
+    // Clear pre-loaded blocks for a clean test
+    let cards = page.locator('[data-testid="block-card"]')
+    while (await cards.count() > 0) {
+      await cards.first().hover()
+      await cards.first().locator('button[title="Delete"]').click()
+      await page.waitForTimeout(150)
+    }
+
     await addBlock(page, "Section")
-    const card = page.locator('[data-testid="block-card"]').last()
-    await card.locator('[data-testid="toggle-config"]').click()
-    const titleInput = card.locator('input[placeholder="Section title"]')
-    await titleInput.fill("Round Trip Test")
-    await page.keyboard.press("Tab")
+    cards = page.locator('[data-testid="block-card"]')
+    const card = cards.last()
+    const titleInput = card.locator('div[contenteditable]')
+    await titleInput.evaluate((el) => {
+      const div = el as HTMLDivElement
+      div.focus()
+      div.innerText = "Round Trip Test"
+      div.dispatchEvent(new Event("input", { bubbles: true }))
+      div.blur()
+    })
     await page.waitForTimeout(300)
 
-    // Switch to text editor and verify LaTeX source
     await page.click('[data-testid="text-editor-tab"]')
     await page.waitForTimeout(500)
     const textarea = page.locator('textarea').first()
     const textContent = await textarea.inputValue()
     expect(textContent).toContain("\\section{Round Trip Test}")
 
-    // Switch back to visual editor and verify block still exists
     await page.click('[data-testid="visual-editor-tab"]')
     await page.waitForTimeout(500)
-    const preview = page.locator('[data-testid="block-card"]').last().locator('h3')
+    const preview = page.locator('[data-testid="block-card"]').last().locator('div[contenteditable]')
     await expect(preview).toContainText("Round Trip Test")
 
     expect(errors).toHaveLength(0)

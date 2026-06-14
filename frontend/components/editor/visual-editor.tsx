@@ -18,19 +18,15 @@ export const VisualEditor = memo(function VisualEditor() {
   const setContent = useEditorStore((s) => s.setContent)
   const setIsModified = useEditorStore((s) => s.setIsModified)
 
-  const [blocks, setBlocks] = useState<AnyVisualBlock[]>(() =>
-    parseLaTeXToBlocks(content)
-  )
+  const [blocks, setBlocks] = useState<AnyVisualBlock[]>(() => parseLaTeXToBlocks(content))
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null)
   const [showOutput, setShowOutput] = useState(true)
   const [dirty, setDirty] = useState(false)
 
-  const handleDragStart = useCallback((id: string | null) => {
-    setActiveId(id)
-  }, [])
-
   const contentRef = useRef(content)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const blockRefs = useRef<Record<string, HTMLElement>>({})
 
   useEffect(() => {
     if (content !== contentRef.current) {
@@ -54,9 +50,7 @@ export const VisualEditor = memo(function VisualEditor() {
   const scheduleSync = useCallback(
     (newBlocks: AnyVisualBlock[]) => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-      syncTimerRef.current = setTimeout(() => {
-        syncToContent(newBlocks)
-      }, 150)
+      syncTimerRef.current = setTimeout(() => syncToContent(newBlocks), 150)
     },
     [syncToContent]
   )
@@ -74,15 +68,27 @@ export const VisualEditor = memo(function VisualEditor() {
       const next = [...blocks, newBlock]
       setBlocks(next)
       syncToContent(next)
+      setFocusedBlockId(newBlock.id)
+    },
+    [blocks, syncToContent]
+  )
+
+  const handleInsertAt = useCallback(
+    (index: number, type: BlockType) => {
+      const plugin = getPlugin(type)
+      const newBlock = createBlock(type, structuredClone(plugin.defaultData))
+      const next = [...blocks]
+      next.splice(index, 0, newBlock)
+      setBlocks(next)
+      syncToContent(next)
+      setFocusedBlockId(newBlock.id)
     },
     [blocks, syncToContent]
   )
 
   const handleChange = useCallback(
     (id: string, data: unknown) => {
-      const next = blocks.map((b) =>
-        b.id === id ? ({ ...b, data } as AnyVisualBlock) : b
-      )
+      const next = blocks.map((b) => (b.id === id ? ({ ...b, data } as AnyVisualBlock) : b))
       setBlocks(next)
       scheduleSync(next)
     },
@@ -99,11 +105,16 @@ export const VisualEditor = memo(function VisualEditor() {
 
   const handleDelete = useCallback(
     (id: string) => {
+      const idx = blocks.findIndex((b) => b.id === id)
       const next = blocks.filter((b) => b.id !== id)
       setBlocks(next)
       syncToContent(next)
+      if (focusedBlockId === id) {
+        const nextFocus = next[Math.min(idx, next.length - 1)]
+        setFocusedBlockId(nextFocus?.id || null)
+      }
     },
-    [blocks, syncToContent]
+    [blocks, focusedBlockId, syncToContent]
   )
 
   const handleDuplicate = useCallback(
@@ -111,17 +122,99 @@ export const VisualEditor = memo(function VisualEditor() {
       const idx = blocks.findIndex((b) => b.id === id)
       if (idx === -1) return
       const original = blocks[idx] as AnyVisualBlock
-      const copy: AnyVisualBlock = createBlock(
-        original.type,
-        structuredClone(original.data)
-      )
+      const plugin = getPlugin(original.type)
+      const copy: AnyVisualBlock = createBlock(original.type, structuredClone(original.data))
       const next = [...blocks]
       next.splice(idx + 1, 0, copy)
+      setBlocks(next)
+      syncToContent(next)
+      setFocusedBlockId(copy.id)
+    },
+    [blocks, syncToContent]
+  )
+
+  const handleMoveUp = useCallback(
+    (id: string) => {
+      const idx = blocks.findIndex((b) => b.id === id)
+      if (idx <= 0) return
+      const next = [...blocks]
+      ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
       setBlocks(next)
       syncToContent(next)
     },
     [blocks, syncToContent]
   )
+
+  const handleMoveDown = useCallback(
+    (id: string) => {
+      const idx = blocks.findIndex((b) => b.id === id)
+      if (idx === -1 || idx >= blocks.length - 1) return
+      const next = [...blocks]
+      ;[next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]
+      setBlocks(next)
+      syncToContent(next)
+    },
+    [blocks, syncToContent]
+  )
+
+  const handleSplit = useCallback(
+    (id: string, beforeData: unknown, afterData: unknown) => {
+      const idx = blocks.findIndex((b) => b.id === id)
+      if (idx === -1) return
+      const original = blocks[idx] as AnyVisualBlock
+      const next = [...blocks]
+      next[idx] = { ...original, data: beforeData } as AnyVisualBlock
+      const newBlock = createBlock(original.type, afterData)
+      next.splice(idx + 1, 0, newBlock)
+      setBlocks(next)
+      syncToContent(next)
+      setFocusedBlockId(newBlock.id)
+    },
+    [blocks, syncToContent]
+  )
+
+  const handleMergeUp = useCallback(
+    (id: string) => {
+      const idx = blocks.findIndex((b) => b.id === id)
+      if (idx <= 0) return
+      const current = blocks[idx] as AnyVisualBlock
+      const prev = blocks[idx - 1] as AnyVisualBlock
+      const currentPlugin = getPlugin(current.type)
+      const prevPlugin = getPlugin(prev.type)
+      if (!prevPlugin.isText || !currentPlugin.isText) return
+
+      const prevText = (prev.data as { text: string }).text
+      const currentText = (current.data as { text: string }).text
+      const mergedText = prevText + (currentText ? " " + currentText : "")
+      const next = [...blocks]
+      const mergedData = { ...(prev.data as object), text: mergedText }
+      next[idx - 1] = { ...prev, data: mergedData } as AnyVisualBlock
+      next.splice(idx, 1)
+      setBlocks(next)
+      syncToContent(next)
+      setFocusedBlockId(prev.id)
+    },
+    [blocks, syncToContent]
+  )
+
+  const handleInsertAfter = useCallback(
+    (id: string, type: BlockType) => {
+      const idx = blocks.findIndex((b) => b.id === id)
+      if (idx === -1) return
+      const plugin = getPlugin(type)
+      const newBlock = createBlock(type, structuredClone(plugin.defaultData))
+      const next = [...blocks]
+      next.splice(idx + 1, 0, newBlock)
+      setBlocks(next)
+      syncToContent(next)
+      setFocusedBlockId(newBlock.id)
+    },
+    [blocks, syncToContent]
+  )
+
+  const handleFocus = useCallback((id: string) => setFocusedBlockId(id), [])
+  const handleBlur = useCallback(() => setFocusedBlockId(null), [])
+  const handleDragStart = useCallback((id: string | null) => setActiveId(id), [])
 
   const activeBlock = activeId ? blocks.find((b) => b.id === activeId) || null : null
   const latex = blocksToLaTeX(blocks)
@@ -171,11 +264,20 @@ export const VisualEditor = memo(function VisualEditor() {
             blocks={blocks}
             activeId={activeId}
             activeBlock={activeBlock}
+            focusedBlockId={focusedBlockId}
             onReorder={handleReorder}
             onChange={handleChange}
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             onDragStart={handleDragStart}
+            onSplit={handleSplit}
+            onMergeUp={handleMergeUp}
+            onInsertAfter={handleInsertAfter}
+            onInsertAt={handleInsertAt}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
           />
 
           {showOutput && (
@@ -194,7 +296,7 @@ export const VisualEditor = memo(function VisualEditor() {
         <div className="flex items-center gap-3">
           <span className="tabular-nums">{blocks.length} blocks</span>
           <span className="text-border">•</span>
-          <span>Drag blocks by the grip handle to reorder</span>
+          <span>Click any block to edit inline</span>
         </div>
         <span>Changes sync to the text editor automatically</span>
       </div>

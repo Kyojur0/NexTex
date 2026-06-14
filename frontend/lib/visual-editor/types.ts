@@ -21,11 +21,24 @@ export interface BlockPlugin<T = unknown> {
   icon: LucideIcon
   color: string
   defaultData: T
-  renderConfig: (props: {
+  /**
+   * Text-like blocks support cursor-based operations:
+   - Enter to split / create new block
+   - Backspace at start to merge with previous block
+   - Arrow up/down to navigate blocks
+   - Slash commands
+   */
+  isText: boolean
+  renderEditor: (props: {
     block: VisualBlock<T>
+    isActive: boolean
     onChange: (data: T) => void
+    onSplit?: (beforeData: T, afterData: T) => void
+    onMergeUp?: () => void
+    onInsertAfter?: (type: BlockType) => void
+    onFocus: () => void
+    onBlur: () => void
   }) => React.ReactNode
-  renderPreview: (props: { block: VisualBlock<T> }) => React.ReactNode
   toLaTeX: (data: T) => string
 }
 

@@ -1,31 +1,15 @@
 "use client"
 
-import { Table } from "lucide-react"
-import { Textarea } from "@/components/ui/textarea"
+import { useCallback } from "react"
+import { Table, Plus, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
 import type { BlockPlugin } from "../types"
 
 export interface TableData {
   rows: string[][]
   caption: string
-}
-
-function parseTableText(text: string): string[][] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) =>
-      line
-        .split("|")
-        .map((cell) => cell.trim())
-        .filter((cell) => cell.length > 0)
-    )
-}
-
-function rowsToText(rows: string[][]): string {
-  return rows.map((row) => row.join(" | ")).join("\n")
 }
 
 export const tablePlugin: BlockPlugin<TableData> = {
@@ -38,66 +22,96 @@ export const tablePlugin: BlockPlugin<TableData> = {
       ["A", "B", "C"],
       ["1", "2", "3"],
     ],
-    caption: "Table caption",
+    caption: "",
   },
-  renderConfig: ({ block, onChange }) => {
-    const value = rowsToText(block.data.rows)
-    return (
-      <div className="space-y-3">
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Cells (rows separated by newlines, columns by |)</Label>
-          <Textarea
-            value={value}
-            onChange={(e) =>
-              onChange({
-                ...block.data,
-                rows: parseTableText(e.target.value),
-              })
-            }
-            rows={5}
-            className="font-mono text-sm resize-y"
-            placeholder="A | B | C&#10;1 | 2 | 3"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Caption</Label>
-          <Input
-            type="text"
-            value={block.data.caption}
-            onChange={(e) => onChange({ ...block.data, caption: e.target.value })}
-            placeholder="Table caption"
-            className="text-sm"
-          />
-        </div>
-      </div>
-    )
-  },
-  renderPreview: ({ block }) => {
-    const rows = block.data.rows
-    if (rows.length === 0) {
-      return <p className="text-sm italic text-muted-foreground/70">Empty table</p>
-    }
+  isText: false,
+  renderEditor: ({ block, isActive, onChange, onFocus, onBlur }) => {
+    const { rows, caption } = block.data
     const colCount = Math.max(1, ...rows.map((r) => r.length))
+
+    const updateCell = useCallback(
+      (ri: number, ci: number, value: string) => {
+        const next = rows.map((row, i) =>
+          i === ri ? row.map((cell, j) => (j === ci ? value : cell)) : row
+        )
+        onChange({ ...block.data, rows: next })
+      },
+      [rows, block.data, onChange]
+    )
+
+    const addRow = useCallback(
+      (afterIdx: number) => {
+        const next = [...rows]
+        next.splice(afterIdx + 1, 0, Array.from({ length: colCount }, () => ""))
+        onChange({ ...block.data, rows: next })
+      },
+      [rows, colCount, block.data, onChange]
+    )
+
+    const addCol = useCallback(() => {
+      onChange({ ...block.data, rows: rows.map((row) => [...row, ""]) })
+    }, [rows, block.data, onChange])
+
+    const removeRow = useCallback(
+      (idx: number) => {
+        const next = rows.filter((_, i) => i !== idx)
+        onChange({ ...block.data, rows: next.length ? next : [[""]] })
+      },
+      [rows, block.data, onChange]
+    )
+
+    const removeCol = useCallback(() => {
+      const next = rows.map((row) => row.slice(0, -1)).filter((row) => row.length > 0)
+      onChange({ ...block.data, rows: next.length ? next : [[""]] })
+    }, [rows, block.data, onChange])
+
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <tbody>
-            {rows.map((row, ri) => (
-              <tr key={ri} className="border-b border-border/60 last:border-0">
-                {Array.from({ length: colCount }).map((_, ci) => (
-                  <td key={ci} className="px-2 py-1 text-foreground/85">
-                    {row[ci] || "\u00A0"}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {block.data.caption && (
-          <p className="text-xs text-center text-muted-foreground mt-2 italic">
-            {block.data.caption}
-          </p>
+      <div className="space-y-3" onFocus={onFocus} onBlur={onBlur}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} className="border-b border-border/40 last:border-0">
+                  {Array.from({ length: colCount }).map((_, ci) => (
+                    <td key={ci} className="p-0 min-w-[80px]">
+                      <Input
+                        value={row[ci] || ""}
+                        onChange={(e) => updateCell(ri, ci, e.target.value)}
+                        className="h-8 text-sm border-0 bg-transparent rounded-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/20"
+                        placeholder=""
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {isActive && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => addRow(rows.length - 1)}>
+              <Plus className="h-3 w-3 mr-1" /> Row
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addCol}>
+              <Plus className="h-3 w-3 mr-1" /> Column
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={removeCol} disabled={colCount <= 1}>
+              <Trash2 className="h-3 w-3 mr-1" /> Col
+            </Button>
+          </div>
         )}
+        {isActive && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Caption</Label>
+            <Input
+              value={caption}
+              onChange={(e) => onChange({ ...block.data, caption: e.target.value })}
+              placeholder="Table caption"
+              className="text-sm"
+            />
+          </div>
+        )}
+        {!isActive && caption && <p className="text-xs text-center text-muted-foreground italic">{caption}</p>}
       </div>
     )
   },
