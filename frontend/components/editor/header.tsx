@@ -31,6 +31,8 @@ import {
   Keyboard,
   PanelRight,
   PanelRightClose,
+  PanelLeft,
+  PanelLeftClose,
   Sparkles,
   Folder,
 } from "lucide-react"
@@ -46,6 +48,8 @@ interface HeaderProps {
   onOpenSettings: () => void
   onTogglePreview: () => void
   showPreview: boolean
+  sidebarCollapsed: boolean
+  onToggleSidebar: () => void
 }
 
 function formatWorkspacePath(path: string): string {
@@ -65,6 +69,8 @@ export const Header = memo(function Header({
   onOpenSettings,
   onTogglePreview,
   showPreview,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: HeaderProps) {
   const projectName = useEditorStore((s) => s.projectName)
   const isModified = useEditorStore((s) => s.isModified)
@@ -89,6 +95,17 @@ export const Header = memo(function Header({
           </div>
           <span className="font-semibold text-sm tracking-tight hidden sm:block">NexTex</span>
         </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 rounded-lg"
+          onClick={onToggleSidebar}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </Button>
 
         <div className="h-5 w-px bg-border/60 shrink-0" />
 
