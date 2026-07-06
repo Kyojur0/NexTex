@@ -1,13 +1,12 @@
 "use client"
 
 import { memo, useCallback } from "react"
-import { motion } from "framer-motion"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { getPlugin } from "@/lib/visual-editor/plugins"
 import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { cn } from "@/lib/utils"
-import { GripVertical } from "lucide-react"
+import { BlockActionBar } from "@/lib/visual-editor/components/block-action-bar"
 
 interface BlockRendererProps {
   block: AnyVisualBlock
@@ -45,7 +44,6 @@ export const BlockRenderer = memo(function BlockRenderer({
   onMoveDown,
 }: BlockRendererProps) {
   const plugin = getPlugin(block.type)
-  const Icon = plugin.icon
 
   const {
     attributes,
@@ -94,103 +92,30 @@ export const BlockRenderer = memo(function BlockRenderer({
   })
 
   return (
-    <motion.div
+    <div
       ref={setNodeRef}
       data-testid="block-card"
-      layout
-      initial={{ opacity: 0, y: 16, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.15 } }}
-      transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-      style={{
-        ...style,
-        borderLeftWidth: "3px",
-        borderLeftColor: plugin.color,
-      }}
+      style={style}
       className={cn(
-        "group relative rounded-2xl border bg-card",
+        "group relative mb-4 transition-colors duration-150",
         isDragging || isOverlay
-          ? "border-primary/30 shadow-floating ring-1 ring-primary/10 opacity-95 rotate-1"
-          : "border-border/40 shadow-elevated hover:shadow-floating hover:border-border/60",
-        isActive && "ring-1 ring-primary/10 border-border/60"
+          ? "opacity-95 rotate-1 shadow-floating"
+          : "hover:bg-[var(--visual-editor-block-hover)]",
+        isActive && "bg-[var(--visual-editor-block-hover)]"
       )}
       onClick={() => onFocus(block.id)}
     >
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/30 bg-muted/30 rounded-t-2xl">
-        <div className="flex items-center gap-2">
-          <button
-            {...attributes}
-            {...listeners}
-            className="p-1 rounded-md hover:bg-muted text-muted-foreground cursor-grab active:cursor-grabbing transition-colors"
-            aria-label="Drag to reorder"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </button>
-          <div
-            className="w-5 h-5 rounded-md flex items-center justify-center"
-            style={{ backgroundColor: `${plugin.color}20`, color: plugin.color }}
-          >
-            <Icon className="h-3 w-3" />
-          </div>
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            {plugin.label}
-          </span>
-        </div>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-          <ToolbarButton onClick={() => onMoveUp?.(block.id)} disabled={index === 0} title="Move up">
-            ↑
-          </ToolbarButton>
-          <ToolbarButton onClick={() => onMoveDown?.(block.id)} disabled={index === total - 1} title="Move down">
-            ↓
-          </ToolbarButton>
-          <ToolbarButton onClick={() => onDuplicate(block.id)} title="Duplicate">
-            ⧉
-          </ToolbarButton>
-          <ToolbarButton onClick={() => onDelete(block.id)} title="Delete" destructive>
-            ×
-          </ToolbarButton>
-        </div>
-      </div>
+      {!isOverlay && (
+        <BlockActionBar
+          onDuplicate={() => onDuplicate(block.id)}
+          onDelete={() => onDelete(block.id)}
+          dragHandleProps={{ ...attributes, ...listeners }}
+        />
+      )}
 
-      {/* Editor */}
-      <div className="px-4 py-3">{editor}</div>
-    </motion.div>
+      <div className="relative">
+        {editor}
+      </div>
+    </div>
   )
 })
-
-function ToolbarButton({
-  onClick,
-  disabled,
-  title,
-  destructive,
-  children,
-}: {
-  onClick: () => void
-  disabled?: boolean
-  title: string
-  destructive?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "h-6 w-6 flex items-center justify-center rounded-md transition-colors text-xs",
-        disabled && "opacity-30 cursor-not-allowed",
-        !disabled &&
-          (destructive
-            ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            : "text-muted-foreground hover:text-foreground hover:bg-muted")
-      )}
-    >
-      {children}
-    </button>
-  )
-}

@@ -12,12 +12,6 @@ export interface SectionData {
   title: string
 }
 
-const levelLabels: Record<SectionData["level"], string> = {
-  section: "H1",
-  subsection: "H2",
-  subsubsection: "H3",
-}
-
 export const sectionPlugin: BlockPlugin<SectionData> = {
   type: "section",
   label: "Section",
@@ -34,12 +28,6 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
       [block.data, onChange]
     )
 
-    const cycleLevel = useCallback(() => {
-      const levels: SectionData["level"][] = ["section", "subsection", "subsubsection"]
-      const idx = levels.indexOf(block.data.level)
-      onChange({ ...block.data, level: levels[(idx + 1) % levels.length] })
-    }, [block.data, onChange])
-
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLDivElement>) => {
         const el = ref.current
@@ -51,7 +39,10 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
 
         if (e.key === "Enter" && !e.shiftKey && onSplit) {
           e.preventDefault()
-          onSplit({ ...block.data, title: text.slice(0, offset) }, { ...block.data, title: text.slice(offset) })
+          onSplit(
+            { ...block.data, title: text.slice(0, offset) },
+            { ...block.data, title: text.slice(offset) }
+          )
           return
         }
         if (e.key === "Backspace" && isAtStart && onMergeUp) {
@@ -82,17 +73,14 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
     )
 
     const sizeClass =
-      block.data.level === "section" ? "text-lg" : block.data.level === "subsection" ? "text-base" : "text-sm"
+      block.data.level === "section"
+        ? "text-2xl font-bold mt-10 mb-4"
+        : block.data.level === "subsection"
+        ? "text-xl font-semibold mt-8 mb-3"
+        : "text-lg font-semibold mt-6 mb-2"
 
     return (
-      <div className="flex items-baseline gap-2 min-w-0 relative">
-        <button
-          onClick={cycleLevel}
-          className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-          title="Click to change level"
-        >
-          {levelLabels[block.data.level]}
-        </button>
+      <div className="relative">
         <InlineText
           ref={ref}
           value={block.data.title}
@@ -101,11 +89,14 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
           onBlur={onBlur}
           onKeyDown={handleKeyDown}
           placeholder="Section title"
-          className={cn("font-semibold tracking-tight text-foreground", sizeClass)}
+          className={cn(
+            "tracking-tight text-[var(--visual-editor-text)] font-serif",
+            sizeClass
+          )}
           multiline={false}
         />
         {slashState?.active && (
-          <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-border/60 bg-card shadow-floating overflow-hidden">
+          <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] shadow-floating overflow-hidden">
             <SlashCommandMenu query={slashState.query} onSelect={handleInsert} onClose={() => setSlashState(null)} />
           </div>
         )}

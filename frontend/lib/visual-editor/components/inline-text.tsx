@@ -1,11 +1,11 @@
 "use client"
 
-import { useRef, useEffect, useCallback, forwardRef } from "react"
+import { useRef, useEffect, useLayoutEffect, useCallback, forwardRef } from "react"
 import { cn } from "@/lib/utils"
 
 interface InlineTextProps {
-  value: string
-  onChange: (value: string) => void
+  value?: string
+  onChange?: (value: string) => void
   onFocus?: () => void
   onBlur?: () => void
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void
@@ -16,10 +16,11 @@ interface InlineTextProps {
 
 export const InlineText = forwardRef<HTMLDivElement, InlineTextProps>(
   function InlineText(
-    { value, onChange, onFocus, onBlur, onKeyDown, placeholder, className, multiline = true },
+    { value = "", onChange, onFocus, onBlur, onKeyDown, placeholder, className, multiline = true },
     forwardedRef
   ) {
     const innerRef = useRef<HTMLDivElement>(null)
+    const valueRef = useRef(value)
 
     useEffect(() => {
       if (forwardedRef) {
@@ -31,23 +32,30 @@ export const InlineText = forwardRef<HTMLDivElement, InlineTextProps>(
       }
     }, [forwardedRef])
 
-    // Sync initial value and external changes only when not focused.
+    // Initialise the contentEditable text content synchronously on mount.
+    useLayoutEffect(() => {
+      const el = innerRef.current
+      if (!el) return
+      valueRef.current = value
+      el.textContent = value
+    }, [])
+
+    // Sync external value changes only when not focused to avoid cursor jumps.
     useEffect(() => {
       const el = innerRef.current
       if (!el || document.activeElement === el) return
-      if (el.innerText !== value) {
-        el.innerText = value
-      }
+      if (valueRef.current === value) return
+      valueRef.current = value
+      el.textContent = value
     }, [value])
 
     const handleInput = useCallback(() => {
       const el = innerRef.current
       if (!el) return
-      const text = el.innerText
-      if (text !== value) {
-        onChange(text)
-      }
-    }, [onChange, value])
+      const next = el.innerText
+      valueRef.current = next
+      onChange?.(next)
+    }, [onChange])
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -71,14 +79,12 @@ export const InlineText = forwardRef<HTMLDivElement, InlineTextProps>(
         onKeyDown={handleKeyDown}
         className={cn(
           "block min-h-[1.5em] w-full outline-none",
-          "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 empty:before:cursor-text",
+          "empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--visual-editor-text-dim)] empty:before:cursor-text",
           className
         )}
         data-placeholder={placeholder}
         style={{ whiteSpace: multiline ? "pre-wrap" : "nowrap" }}
-      >
-        {value}
-      </div>
+      />
     )
   }
 )

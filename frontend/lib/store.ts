@@ -74,6 +74,7 @@ interface EditorStore {
   showPreview: boolean
   showHistory: boolean
   showAISpotlight: boolean
+  showVisualLatexPanel: boolean
   sidebarWidth: number
   isDragging: boolean
   activeEditorTab: 'text' | 'visual'
@@ -105,6 +106,7 @@ interface EditorStore {
   setShowPreview: (value: boolean) => void
   setShowHistory: (value: boolean) => void
   setShowAISpotlight: (value: boolean) => void
+  setShowVisualLatexPanel: (value: boolean) => void
   setSidebarWidth: (width: number) => void
   setIsDragging: (value: boolean) => void
   setActiveEditorTab: (tab: 'text' | 'visual') => void
@@ -151,6 +153,7 @@ export const useEditorStore = create<EditorStore>()(
       showPreview: true,
       showHistory: false,
       showAISpotlight: false,
+      showVisualLatexPanel: true,
       sidebarWidth: 240,
       isDragging: false,
       activeEditorTab: 'text',
@@ -182,6 +185,7 @@ export const useEditorStore = create<EditorStore>()(
       setShowPreview: (value) => set({ showPreview: value }),
       setShowHistory: (value) => set({ showHistory: value }),
       setShowAISpotlight: (value) => set({ showAISpotlight: value }),
+      setShowVisualLatexPanel: (value) => set({ showVisualLatexPanel: value }),
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       setIsDragging: (value) => set({ isDragging: value }),
       setActiveEditorTab: (tab) => set({ activeEditorTab: tab }),

@@ -80,6 +80,13 @@ export function parseLaTeXToBlocks(latex: string): AnyVisualBlock[] {
 
         const content = inner.join("\n").trim()
 
+        if (envName === "document") {
+          // Recursively parse the contents inside the document environment
+          const innerBlocks = parseLaTeXToBlocks(content)
+          blocks.push(...innerBlocks)
+          continue
+        }
+
         if (envName === "equation") {
           const data: MathData = { latex: content }
           blocks.push(createBlock("math", data))

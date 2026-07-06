@@ -1,11 +1,9 @@
 "use client"
 
 import { useCallback } from "react"
-import { Table, Plus, Trash2 } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Table as TableIcon } from "lucide-react"
 import type { BlockPlugin } from "../types"
+import { InlineText } from "../components/inline-text"
 
 export interface TableData {
   rows: string[][]
@@ -15,7 +13,7 @@ export interface TableData {
 export const tablePlugin: BlockPlugin<TableData> = {
   type: "table",
   label: "Table",
-  icon: Table,
+  icon: TableIcon,
   color: "#f59e0b",
   defaultData: {
     rows: [
@@ -65,20 +63,29 @@ export const tablePlugin: BlockPlugin<TableData> = {
       onChange({ ...block.data, rows: next.length ? next : [[""]] })
     }, [rows, block.data, onChange])
 
+    const updateCaption = useCallback(
+      (caption: string) => onChange({ ...block.data, caption }),
+      [block.data, onChange]
+    )
+
     return (
-      <div className="space-y-3" onFocus={onFocus} onBlur={onBlur}>
+      <div className="py-2" onFocus={onFocus} onBlur={onBlur}>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-sm border-collapse border border-[var(--visual-editor-canvas-border)]">
             <tbody>
               {rows.map((row, ri) => (
-                <tr key={ri} className="border-b border-border/40 last:border-0">
+                <tr key={ri} className="border-b border-[var(--visual-editor-canvas-border)] last:border-b-0">
                   {Array.from({ length: colCount }).map((_, ci) => (
-                    <td key={ci} className="p-0 min-w-[80px]">
-                      <Input
+                    <td
+                      key={ci}
+                      className="p-0 min-w-[80px] border-r border-[var(--visual-editor-canvas-border)] last:border-r-0"
+                    >
+                      <InlineText
                         value={row[ci] || ""}
-                        onChange={(e) => updateCell(ri, ci, e.target.value)}
-                        className="h-8 text-sm border-0 bg-transparent rounded-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/20"
+                        onChange={(value) => updateCell(ri, ci, value)}
+                        className="px-3 py-2 text-[var(--visual-editor-text)] text-sm font-serif outline-none focus:bg-[var(--visual-editor-block-hover)]"
                         placeholder=""
+                        multiline={false}
                       />
                     </td>
                   ))}
@@ -87,31 +94,52 @@ export const tablePlugin: BlockPlugin<TableData> = {
             </tbody>
           </table>
         </div>
+
         {isActive && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => addRow(rows.length - 1)}>
-              <Plus className="h-3 w-3 mr-1" /> Row
-            </Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addCol}>
-              <Plus className="h-3 w-3 mr-1" /> Column
-            </Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={removeCol} disabled={colCount <= 1}>
-              <Trash2 className="h-3 w-3 mr-1" /> Col
-            </Button>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => addRow(rows.length - 1)}
+              className="text-[11px] px-2 py-1 rounded-md border border-[var(--visual-editor-toolbar-border)] text-[var(--visual-editor-text-dim)] hover:text-[var(--visual-editor-text)] hover:bg-[var(--visual-editor-tool-hover)] transition-colors"
+            >
+              + Row
+            </button>
+            <button
+              type="button"
+              onClick={addCol}
+              className="text-[11px] px-2 py-1 rounded-md border border-[var(--visual-editor-toolbar-border)] text-[var(--visual-editor-text-dim)] hover:text-[var(--visual-editor-text)] hover:bg-[var(--visual-editor-tool-hover)] transition-colors"
+            >
+              + Column
+            </button>
+            <button
+              type="button"
+              onClick={removeCol}
+              disabled={colCount <= 1}
+              className="text-[11px] px-2 py-1 rounded-md border border-[var(--visual-editor-toolbar-border)] text-[var(--visual-editor-text-dim)] hover:text-[var(--visual-editor-text)] hover:bg-[var(--visual-editor-tool-hover)] transition-colors disabled:opacity-40"
+            >
+              - Column
+            </button>
+            {rows.map((_, ri) => (
+              <button
+                key={ri}
+                type="button"
+                onClick={() => removeRow(ri)}
+                disabled={rows.length <= 1}
+                className="text-[11px] px-2 py-1 rounded-md border border-[var(--visual-editor-toolbar-border)] text-[var(--visual-editor-text-dim)] hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
+              >
+                - R{ri + 1}
+              </button>
+            ))}
           </div>
         )}
-        {isActive && (
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Caption</Label>
-            <Input
-              value={caption}
-              onChange={(e) => onChange({ ...block.data, caption: e.target.value })}
-              placeholder="Table caption"
-              className="text-sm"
-            />
-          </div>
-        )}
-        {!isActive && caption && <p className="text-xs text-center text-muted-foreground italic">{caption}</p>}
+
+        <InlineText
+          value={caption}
+          onChange={updateCaption}
+          className="mt-2 text-sm italic text-center text-[var(--visual-editor-text-dim)] font-serif"
+          placeholder="Table caption"
+          multiline={false}
+        />
       </div>
     )
   },

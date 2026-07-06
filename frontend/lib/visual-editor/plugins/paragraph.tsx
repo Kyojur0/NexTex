@@ -23,10 +23,8 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
     const [slashState, setSlashState] = useState<{ active: boolean; query: string } | null>(null)
 
     const handleChange = useCallback(
-      (text: string) => {
-        onChange({ ...block.data, text })
-      },
-      [block.data, onChange]
+      (text: string) => onChange({ text }),
+      [onChange]
     )
 
     const handleKeyDown = useCallback(
@@ -39,11 +37,6 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
           selection && selection.rangeCount > 0
             ? selection.getRangeAt(0).startOffset === 0 && selection.getRangeAt(0).startContainer === el.firstChild
             : false
-        const isAtEnd =
-          selection && selection.rangeCount > 0
-            ? selection.getRangeAt(0).endOffset === (el.lastChild?.textContent?.length ?? 0) &&
-              selection.getRangeAt(0).endContainer === el.lastChild
-            : false
 
         if (e.key === "Enter" && !e.shiftKey && onSplit) {
           e.preventDefault()
@@ -52,7 +45,7 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
           const offset = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).startOffset : text.length
           const before = text.slice(0, offset)
           const after = text.slice(offset)
-          onSplit({ ...block.data, text: before }, { ...block.data, text: after })
+          onSplit({ text: before }, { text: after })
           return
         }
 
@@ -97,20 +90,21 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
           onFocus={onFocus}
           onBlur={onBlur}
           onKeyDown={handleKeyDown}
-          placeholder="Type '/' for commands..."
+          placeholder="Start typing or press '/' for commands..."
           className={cn(
-            "text-sm text-foreground/90 leading-relaxed min-h-[1.5em]",
-            isActive && "text-foreground"
+            "text-base leading-7 text-[var(--visual-editor-text)]",
+            "font-serif",
+            isActive && "text-[var(--visual-editor-text)]"
           )}
           multiline
         />
         {slashState?.active && (
-          <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-border/60 bg-card shadow-floating overflow-hidden">
+          <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] shadow-floating overflow-hidden">
             <SlashCommandMenu query={slashState.query} onSelect={handleInsert} onClose={() => setSlashState(null)} />
           </div>
         )}
       </div>
     )
   },
-  toLaTeX: (data) => data.text.trim(),
+  toLaTeX: (data) => data.text?.trim() || "",
 }

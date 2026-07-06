@@ -16,8 +16,10 @@ async function switchToVisualEditor(page: Page) {
   await page.waitForSelector('[data-testid="block-canvas"]', { timeout: 10000 })
 }
 
-async function addBlock(page: Page, label: string) {
-  await page.click(`[data-testid="block-palette-button-${label}"]`)
+async function addBlock(page: Page, type: string) {
+  // Open Insert dropdown in the formatting toolbar
+  await page.click('[data-testid="insert-menu-button"]')
+  await page.click(`[data-testid="insert-menu-${type.toLowerCase()}"]`)
   await page.waitForTimeout(250)
 }
 
@@ -162,7 +164,7 @@ test.describe("Visual Block Editor", () => {
     })
     await page.waitForTimeout(300)
 
-    await page.click('[data-testid="text-editor-tab"]')
+    await page.click('[data-testid="visual-toolbar-code-tab"]')
     await page.waitForTimeout(500)
     const textarea = page.locator('textarea').first()
     const textContent = await textarea.inputValue()

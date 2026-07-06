@@ -4,8 +4,6 @@ import { useEffect, useRef, useCallback } from "react"
 import { Sigma } from "lucide-react"
 import katex from "katex"
 import "katex/dist/katex.min.css"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import type { BlockPlugin } from "../types"
 
 export interface MathData {
@@ -40,18 +38,17 @@ export const mathPlugin: BlockPlugin<MathData> = {
     )
 
     return (
-      <div className="space-y-3">
-        <div className="flex justify-center py-2 overflow-x-auto bg-muted/20 rounded-xl">
-          <div ref={previewRef} className="text-foreground" />
+      <div className="py-2" onFocus={onFocus} onBlur={onBlur}>
+        <div className="flex justify-center overflow-x-auto">
+          <div ref={previewRef} className="text-[var(--visual-editor-text)]" />
         </div>
         {isActive && (
-          <div className="space-y-1.5" onFocus={onFocus} onBlur={onBlur}>
-            <Label className="text-xs text-muted-foreground">LaTeX</Label>
-            <Textarea
+          <div className="mt-2">
+            <input
+              type="text"
               value={block.data.latex}
               onChange={(e) => handleChange(e.target.value)}
-              rows={3}
-              className="font-mono text-sm resize-y"
+              className="w-full bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-md px-3 py-1.5 font-mono text-sm text-[var(--visual-editor-text)] placeholder:text-[var(--visual-editor-text-dim)] focus:outline-none focus:border-[var(--primary)]"
               placeholder="e.g. E = mc^2"
             />
           </div>

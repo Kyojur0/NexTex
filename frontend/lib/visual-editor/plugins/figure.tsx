@@ -2,8 +2,7 @@
 
 import { useCallback } from "react"
 import { Image } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { InlineText } from "../components/inline-text"
 import type { BlockPlugin } from "../types"
 
 export interface FigureData {
@@ -26,46 +25,53 @@ export const figurePlugin: BlockPlugin<FigureData> = {
     )
 
     return (
-      <div className="space-y-3" onFocus={onFocus} onBlur={onBlur}>
-        <div className="w-full h-32 bg-muted/30 rounded-xl border border-dashed border-border/60 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-1.5 text-muted-foreground/50">
+      <div className="py-2" onFocus={onFocus} onBlur={onBlur}>
+        <div className="w-full h-40 bg-[var(--visual-editor-bg)] rounded-xl border border-dashed border-[var(--visual-editor-canvas-border)] flex items-center justify-center">
+          <div className="flex flex-col items-center gap-1.5 text-[var(--visual-editor-text-dim)]">
             <Image className="h-8 w-8" />
-            <span className="text-xs">{block.data.src || "image.png"}</span>
+            <span className="text-xs font-mono">{block.data.src || "image.png"}</span>
           </div>
         </div>
+
         {isActive && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5 col-span-2">
-              <Label className="text-xs text-muted-foreground">Image filename</Label>
-              <Input
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase tracking-wider text-[var(--visual-editor-text-dim)]">Image filename</label>
+              <input
+                type="text"
                 value={block.data.src}
                 onChange={(e) => handleChange({ src: e.target.value })}
                 placeholder="image.png"
-                className="text-sm"
+                className="w-full mt-1 bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-md px-2 py-1 text-sm text-[var(--visual-editor-text)] outline-none focus:border-[var(--primary)]"
               />
             </div>
-            <div className="space-y-1.5 col-span-2">
-              <Label className="text-xs text-muted-foreground">Caption</Label>
-              <Input
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase tracking-wider text-[var(--visual-editor-text-dim)]">Caption</label>
+              <input
+                type="text"
                 value={block.data.caption}
                 onChange={(e) => handleChange({ caption: e.target.value })}
                 placeholder="Figure caption"
-                className="text-sm"
+                className="w-full mt-1 bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-md px-2 py-1 text-sm text-[var(--visual-editor-text)] outline-none focus:border-[var(--primary)]"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Width</Label>
-              <Input
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-[var(--visual-editor-text-dim)]">Width</label>
+              <input
+                type="text"
                 value={block.data.width}
                 onChange={(e) => handleChange({ width: e.target.value })}
                 placeholder="0.8"
-                className="text-sm"
+                className="w-full mt-1 bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-md px-2 py-1 text-sm text-[var(--visual-editor-text)] outline-none focus:border-[var(--primary)]"
               />
             </div>
           </div>
         )}
+
         {!isActive && block.data.caption && (
-          <p className="text-xs text-center text-muted-foreground italic">{block.data.caption}</p>
+          <p className="mt-2 text-sm text-center italic text-[var(--visual-editor-text-dim)] font-serif">
+            {block.data.caption}
+          </p>
         )}
       </div>
     )

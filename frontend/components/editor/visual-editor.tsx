@@ -1,32 +1,74 @@
 "use client"
 
 import { memo, useState, useEffect, useCallback, useRef } from "react"
-import { cn } from "@/lib/utils"
 import { useEditorStore } from "@/lib/store"
 import { parseLaTeXToBlocks } from "@/lib/visual-editor/parser"
 import { blocksToLaTeX } from "@/lib/visual-editor/serializer"
 import { getPlugin } from "@/lib/visual-editor/plugins"
 import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { createBlock } from "@/lib/visual-editor/types"
-import { BlockSidebar } from "./block-sidebar"
+import type { SectionData } from "@/lib/visual-editor/plugins/section"
 import { BlockCanvas } from "./block-canvas"
 import { LatexOutputPanel } from "./latex-output-panel"
-import { Check, Pencil, Code2, Eye, LayoutTemplate } from "lucide-react"
+import { FormattingToolbar, type FormatState, type ParagraphStyle } from "@/lib/visual-editor/components/formatting-toolbar"
+
+const defaultFormat: FormatState = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strikethrough: false,
+  superscript: false,
+  subscript: false,
+  code: false,
+}
+
+function detectFormatFromSelection(): FormatState {
+  if (typeof document === "undefined") return defaultFormat
+  const formats = { ...defaultFormat }
+  try {
+    formats.bold = document.queryCommandState("bold")
+    formats.italic = document.queryCommandState("italic")
+    formats.underline = document.queryCommandState("underline")
+    formats.strikethrough = document.queryCommandState("strikeThrough")
+    formats.superscript = document.queryCommandState("superscript")
+    formats.subscript = document.queryCommandState("subscript")
+  } catch {
+    // ignore
+  }
+  return formats
+}
+
+function getParagraphStyleForBlock(block: AnyVisualBlock | null | undefined): ParagraphStyle {
+  if (!block) return "normal"
+  if (block.type === "section") {
+    const level = (block.data as { level?: string }).level
+    if (level === "subsection") return "heading-2"
+    if (level === "subsubsection") return "heading-3"
+    return "heading-1"
+  }
+  return "normal"
+}
 
 export const VisualEditor = memo(function VisualEditor() {
   const content = useEditorStore((s) => s.content)
   const setContent = useEditorStore((s) => s.setContent)
   const setIsModified = useEditorStore((s) => s.setIsModified)
+  const setActiveEditorTab = useEditorStore((s) => s.setActiveEditorTab)
+  const showVisualLatexPanel = useEditorStore((s) => s.showVisualLatexPanel)
+  const setShowVisualLatexPanel = useEditorStore((s) => s.setShowVisualLatexPanel)
 
   const [blocks, setBlocks] = useState<AnyVisualBlock[]>(() => parseLaTeXToBlocks(content))
   const [activeId, setActiveId] = useState<string | null>(null)
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null)
-  const [showOutput, setShowOutput] = useState(true)
   const [dirty, setDirty] = useState(false)
+  const [format, setFormat] = useState<FormatState>(defaultFormat)
 
   const contentRef = useRef(content)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blockRefs = useRef<Record<string, HTMLElement>>({})
+
+  const focusedBlock = blocks.find((b) => b.id === focusedBlockId)
+  const paragraphStyle = getParagraphStyleForBlock(focusedBlock)
 
   useEffect(() => {
     if (content !== contentRef.current) {
@@ -35,6 +77,14 @@ export const VisualEditor = memo(function VisualEditor() {
       setDirty(false)
     }
   }, [content])
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      setFormat(detectFormatFromSelection())
+    }
+    document.addEventListener("selectionchange", handleSelectionChange)
+    return () => document.removeEventListener("selectionchange", handleSelectionChange)
+  }, [])
 
   const syncToContent = useCallback(
     (newBlocks: AnyVisualBlock[]) => {
@@ -219,47 +269,104 @@ export const VisualEditor = memo(function VisualEditor() {
   const activeBlock = activeId ? blocks.find((b) => b.id === activeId) || null : null
   const latex = blocksToLaTeX(blocks)
 
+  const handleFormatToggle = useCallback((key: keyof FormatState) => {
+    const commandMap: Record<string, string> = {
+      bold: "bold",
+      italic: "italic",
+      underline: "underline",
+      strikethrough: "strikeThrough",
+      superscript: "superscript",
+      subscript: "subscript",
+    }
+    const command = commandMap[key]
+    if (command) {
+      document.execCommand(command, false)
+    }
+    if (key === "code") {
+      const selection = window.getSelection()
+      if (selection && selection.rangeCount > 0) {
+        const html = `<code class="font-mono text-sm bg-[var(--visual-editor-tool-hover)] px-1 rounded">${selection.toString()}</code>`
+        document.execCommand("insertHTML", false, html)
+      }
+    }
+    setFormat(detectFormatFromSelection())
+  }, [])
+
+  const handleInlineMath = useCallback(() => {
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    const text = selection.toString()
+    const html = `<span data-math="true">$${text}$</span>`
+    document.execCommand("insertHTML", false, html)
+  }, [])
+
+  const handleLink = useCallback(() => {
+    const url = window.prompt("Enter URL")
+    if (!url) return
+    document.execCommand("createLink", false, url)
+  }, [])
+
+  const handleParagraphStyleChange = useCallback(
+    (style: ParagraphStyle) => {
+      if (!focusedBlock) return
+      if (focusedBlock.type === "section") {
+        const levelMap: Record<string, SectionData["level"]> = {
+          "heading-1": "section",
+          "heading-2": "subsection",
+          "heading-3": "subsubsection",
+        }
+        const level = levelMap[style]
+        if (level) {
+          handleChange(focusedBlock.id, { ...(focusedBlock.data as object), level })
+        }
+      }
+    },
+    [focusedBlock, handleChange]
+  )
+
+  const handleListToggle = useCallback(
+    (kind: "itemize" | "enumerate") => {
+      if (!focusedBlock) return
+      if (focusedBlock.type === "list") {
+        handleChange(focusedBlock.id, { ...(focusedBlock.data as object), kind })
+      } else {
+        handleInsertAfter(focusedBlock.id, "list")
+      }
+    },
+    [focusedBlock, handleChange, handleInsertAfter]
+  )
+
+  const handleIndent = useCallback((direction: "in" | "out") => {
+    // Placeholder: actual indentation requires richer paragraph data model
+    console.log("indent", direction)
+  }, [])
+
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-background">
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-muted/30">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-foreground/90">
-            <LayoutTemplate className="h-4 w-4 text-primary/80" />
-            <span className="text-sm font-medium">Visual Editor</span>
-          </div>
-          {dirty && (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-600 dark:text-amber-400">
-              <Pencil className="h-2.5 w-2.5" />
-              Unsaved
-            </span>
-          )}
-          {!dirty && blocks.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
-              <Check className="h-3 w-3" />
-              Synced
-            </span>
-          )}
-        </div>
-        <button
-          onClick={() => setShowOutput((s) => !s)}
-          className={cn(
-            "inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg transition-all",
-            showOutput
-              ? "bg-foreground text-background shadow-elevated"
-              : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
-          )}
-        >
-          {showOutput ? <Eye className="h-3 w-3" /> : <Code2 className="h-3 w-3" />}
-          {showOutput ? "Hide LaTeX" : "Show LaTeX"}
-        </button>
-      </div>
+    <div className="h-full flex flex-col overflow-hidden bg-[var(--visual-editor-bg)]">
+      {/* Formatting toolbar */}
+      <FormattingToolbar
+        paragraphStyle={paragraphStyle}
+        format={format}
+        isVisual={true}
+        latexPanelOpen={showVisualLatexPanel}
+        canUndo={false}
+        canRedo={false}
+        onParagraphStyleChange={handleParagraphStyleChange}
+        onFormatToggle={handleFormatToggle}
+        onInlineMath={handleInlineMath}
+        onLink={handleLink}
+        onListToggle={handleListToggle}
+        onIndent={handleIndent}
+        onInsert={handleAdd}
+        onToggleLatexPanel={() => setShowVisualLatexPanel(!showVisualLatexPanel)}
+        onToggleView={() => setActiveEditorTab("text")}
+        onUndo={() => {}}
+        onRedo={() => {}}
+      />
 
       {/* Main workspace */}
       <div className="flex-1 flex overflow-hidden">
-        <BlockSidebar onAdd={handleAdd} />
-
-        <div className="flex-1 flex overflow-hidden bg-muted/10">
+        <div className="flex-1 flex overflow-hidden">
           <BlockCanvas
             blocks={blocks}
             activeId={activeId}
@@ -280,10 +387,10 @@ export const VisualEditor = memo(function VisualEditor() {
             onMoveDown={handleMoveDown}
           />
 
-          {showOutput && (
+          {showVisualLatexPanel && (
             <>
-              <div className="w-px bg-border/40 shrink-0" />
-              <div className="w-72 shrink-0">
+              <div className="w-px bg-[var(--visual-editor-toolbar-border)] shrink-0" />
+              <div className="w-72 shrink-0 bg-[var(--visual-editor-toolbar)] transition-all duration-200 ease-in-out">
                 <LatexOutputPanel latex={latex} />
               </div>
             </>
@@ -292,13 +399,10 @@ export const VisualEditor = memo(function VisualEditor() {
       </div>
 
       {/* Status bar */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-2 border-t border-border/60 bg-muted/30 text-[11px] text-muted-foreground">
-        <div className="flex items-center gap-3">
-          <span className="tabular-nums">{blocks.length} blocks</span>
-          <span className="text-border">•</span>
-          <span>Click any block to edit inline</span>
-        </div>
-        <span>Changes sync to the text editor automatically</span>
+      <div className="shrink-0 flex items-center px-4 py-2 border-t border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] text-[11px] text-[var(--visual-editor-text-dim)]">
+        <span className="tabular-nums">{blocks.length} blocks</span>
+        <span className="text-[var(--visual-editor-toolbar-border)] mx-3">•</span>
+        <span>Click any block to edit inline</span>
       </div>
     </div>
   )

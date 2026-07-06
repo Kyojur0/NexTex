@@ -500,6 +500,7 @@ _PACKAGE_RULES = [
     ("graphicx", [r"\\includegraphics"]),
     ("listings", [r"\\begin\{lstlisting\}"]),
     ("array", [r"\\begin\{tabular\}"]),
+    ("hyperref", [r"\\href\{"]),
     ("geometry", [r"\\usepackage\[.*\]\{geometry\}"]),  # keep; geometry is common
 ]
 
@@ -521,7 +522,7 @@ def _detect_missing_packages(content: str) -> list[str]:
 
 def _preprocess_latex_content(content: str) -> str:
     """Ensure content can compile by injecting required packages or wrapping it."""
-    has_documentclass = r"\\documentclass" in content
+    has_documentclass = r"\documentclass" in content
 
     if not has_documentclass:
         # The user is probably working in the visual editor with no preamble.

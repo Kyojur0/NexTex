@@ -1,10 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
-import { Code } from "lucide-react"
-import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Code as CodeIcon } from "lucide-react"
 import type { BlockPlugin } from "../types"
 
 export interface CodeData {
@@ -15,7 +12,7 @@ export interface CodeData {
 export const codePlugin: BlockPlugin<CodeData> = {
   type: "code",
   label: "Code",
-  icon: Code,
+  icon: CodeIcon,
   color: "#f43f5e",
   defaultData: { language: "", code: "" },
   isText: false,
@@ -26,25 +23,37 @@ export const codePlugin: BlockPlugin<CodeData> = {
     )
 
     return (
-      <div className="space-y-2" onFocus={onFocus} onBlur={onBlur}>
-        {isActive && (
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Language</Label>
-            <Input
-              value={block.data.language}
-              onChange={(e) => handleChange({ language: e.target.value })}
-              placeholder="e.g. python"
-              className="h-7 text-xs w-32"
-            />
+      <div className="py-2 relative" onFocus={onFocus} onBlur={onBlur}>
+        {block.data.language && (
+          <div className="absolute top-4 right-3 text-[10px] uppercase tracking-wider text-[var(--visual-editor-text-dim)] font-mono">
+            {block.data.language}
           </div>
         )}
-        <Textarea
-          value={block.data.code}
-          onChange={(e) => handleChange({ code: e.target.value })}
-          rows={isActive ? 6 : 3}
-          className="font-mono text-xs resize-y bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/20"
-          placeholder="Paste code here..."
-        />
+        {isActive ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] uppercase tracking-wider text-[var(--visual-editor-text-dim)]">Language</label>
+              <input
+                type="text"
+                value={block.data.language}
+                onChange={(e) => handleChange({ language: e.target.value })}
+                placeholder="e.g. python"
+                className="w-32 bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-md px-2 py-1 text-xs text-[var(--visual-editor-text)] outline-none focus:border-[var(--primary)]"
+              />
+            </div>
+            <textarea
+              value={block.data.code}
+              onChange={(e) => handleChange({ code: e.target.value })}
+              rows={6}
+              className="w-full bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-lg p-4 font-mono text-xs text-[var(--visual-editor-text)] resize-y outline-none focus:border-[var(--primary)]"
+              placeholder="Paste code here..."
+            />
+          </div>
+        ) : (
+          <pre className="w-full bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-lg p-4 font-mono text-xs text-[var(--visual-editor-text)] overflow-x-auto">
+            <code>{block.data.code || " "}</code>
+          </pre>
+        )}
       </div>
     )
   },

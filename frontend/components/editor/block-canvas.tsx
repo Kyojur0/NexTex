@@ -21,9 +21,9 @@ import {
 import { AnimatePresence, motion } from "framer-motion"
 import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { BlockRenderer } from "./block-renderer"
-import { InsertBlockButton } from "@/lib/visual-editor/components/insert-block-button"
+import { InsertLine } from "@/lib/visual-editor/components/insert-line"
 import { cn } from "@/lib/utils"
-import { LayoutTemplate, MousePointer2 } from "lucide-react"
+import { FileText } from "lucide-react"
 
 interface BlockCanvasProps {
   blocks: AnyVisualBlock[]
@@ -94,62 +94,66 @@ export const BlockCanvas = memo(function BlockCanvas({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <SortableContext
-        items={blocks.map((b) => b.id)}
-        strategy={verticalListSortingStrategy}
-      >
+      <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
         <div
           data-testid="block-canvas"
-          className={cn(
-            "flex-1 overflow-y-auto px-5 py-5 space-y-1",
-            blocks.length === 0 && "flex items-center justify-center"
-          )}
+          className="flex-1 overflow-y-auto px-4 py-8 bg-[var(--visual-editor-bg)]"
         >
-          {blocks.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center text-center gap-4 text-muted-foreground/60 max-w-xs"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center">
-                <LayoutTemplate className="h-8 w-8 opacity-50" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground/70">Your document is empty</p>
-                <p className="text-xs mt-1 leading-relaxed">
-                  Select a block from the palette or click + to start building.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-[10px]">
-                <MousePointer2 className="h-3 w-3" />
-                <span>Drag blocks to reorder</span>
-              </div>
-            </motion.div>
-          ) : (
-            <AnimatePresence mode="popLayout">
-              {blocks.map((block, idx) => (
-                <div key={block.id} className="space-y-1">
-                  <BlockRenderer
-                    block={block}
-                    isActive={focusedBlockId === block.id}
-                    index={idx}
-                    total={blocks.length}
-                    onChange={onChange}
-                    onDelete={onDelete}
-                    onDuplicate={onDuplicate}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
-                    onSplit={onSplit}
-                    onMergeUp={onMergeUp}
-                    onInsertAfter={onInsertAfter}
-                    onMoveUp={onMoveUp}
-                    onMoveDown={onMoveDown}
-                  />
-                  <InsertBlockButton onInsert={(type) => onInsertAt(idx + 1, type)} />
+          <div
+            className={cn(
+              "max-w-[850px] w-full mx-auto min-h-[calc(100%-4rem)]",
+              "bg-[var(--visual-editor-canvas)] border border-[var(--visual-editor-canvas-border)] rounded-lg shadow-2xl",
+              "px-16 py-16"
+            )}
+          >
+            {blocks.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center text-center gap-4 text-[var(--visual-editor-text-dim)] max-w-xs mx-auto py-20"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-[var(--visual-editor-tool-hover)] flex items-center justify-center">
+                  <FileText className="h-8 w-8 opacity-50" />
                 </div>
-              ))}
-            </AnimatePresence>
-          )}
+                <div>
+                  <p className="text-sm font-medium text-[var(--visual-editor-text)]">Your document is empty</p>
+                  <p className="text-xs mt-1 leading-relaxed">
+                    Type below or use the Insert menu to start building your document.
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <AnimatePresence mode="popLayout">
+                {blocks.map((block, idx) => (
+                  <div key={block.id}>
+                    <BlockRenderer
+                      block={block}
+                      isActive={focusedBlockId === block.id}
+                      index={idx}
+                      total={blocks.length}
+                      onChange={onChange}
+                      onDelete={onDelete}
+                      onDuplicate={onDuplicate}
+                      onFocus={onFocus}
+                      onBlur={onBlur}
+                      onSplit={onSplit}
+                      onMergeUp={onMergeUp}
+                      onInsertAfter={onInsertAfter}
+                      onMoveUp={onMoveUp}
+                      onMoveDown={onMoveDown}
+                    />
+                    <InsertLine onInsert={(type) => onInsertAt(idx + 1, type)} />
+                  </div>
+                ))}
+              </AnimatePresence>
+            )}
+
+            {blocks.length === 0 && (
+              <div className="mt-4">
+                <InsertLine onInsert={(type) => onInsertAt(0, type)} />
+              </div>
+            )}
+          </div>
         </div>
       </SortableContext>
 

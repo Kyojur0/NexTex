@@ -572,8 +572,8 @@ function EditorInner() {
               </div>
             ) : (
               <>
-                <EditorTabBar />
-                <div className="flex-1 overflow-hidden mt-3">
+                {activeEditorTab === "text" && <EditorTabBar />}
+                <div className={cn("flex-1 overflow-hidden", activeEditorTab === "text" && "mt-3")}>
                   {activeEditorTab === "text" ? <EditorPane /> : <VisualEditor />}
                 </div>
               </>
