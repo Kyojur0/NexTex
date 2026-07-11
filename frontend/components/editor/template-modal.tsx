@@ -63,7 +63,6 @@ export const TemplateModal = memo(function TemplateModal({
   const handleCreate = useCallback(() => {
     if (selectedTemplate) {
       // In real app: create new project from template
-      console.log(`Creating project from template: ${selectedTemplate}`)
       onOpenChange(false)
       setSelectedTemplate(null)
     }

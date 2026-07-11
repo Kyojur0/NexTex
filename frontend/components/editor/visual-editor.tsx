@@ -338,7 +338,6 @@ export const VisualEditor = memo(function VisualEditor() {
 
   const handleIndent = useCallback((direction: "in" | "out") => {
     // Placeholder: actual indentation requires richer paragraph data model
-    console.log("indent", direction)
   }, [])
 
   return (

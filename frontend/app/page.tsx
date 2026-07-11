@@ -359,9 +359,7 @@ function EditorInner() {
         const firstTex = findFirstTexFile(tree)
         if (firstTex) {
           await state.openFile(firstTex.id, firstTex.path)
-          console.log("[NexTex] Opened first .tex file:", firstTex.path)
         } else {
-          console.warn("[NexTex] No .tex files found in workspace")
         }
       })
       .catch((e) => {
@@ -384,7 +382,6 @@ function EditorInner() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
-        console.log("[NexTex] Build shortcut triggered")
         state.compileActiveFile().catch((err: any) => {
           console.error("[NexTex] Build failed:", err)
         })
@@ -493,10 +490,8 @@ function EditorInner() {
   const handleBuild = useCallback(async () => {
     const state = useEditorStore.getState()
     if (!state.activeFilePath) {
-      console.warn("[NexTex] Build skipped: no active file")
       return
     }
-    console.log("[NexTex] Build started for:", state.activeFilePath)
     if (state.isModified) {
       await state.saveActiveFile()
     }
