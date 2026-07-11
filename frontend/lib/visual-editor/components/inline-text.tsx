@@ -11,12 +11,13 @@ interface InlineTextProps {
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void
   placeholder?: string
   className?: string
+  style?: React.CSSProperties
   multiline?: boolean
 }
 
 export const InlineText = forwardRef<HTMLDivElement, InlineTextProps>(
   function InlineText(
-    { value = "", onChange, onFocus, onBlur, onKeyDown, placeholder, className, multiline = true },
+    { value = "", onChange, onFocus, onBlur, onKeyDown, placeholder, className, style, multiline = true },
     forwardedRef
   ) {
     const innerRef = useRef<HTMLDivElement>(null)
@@ -83,7 +84,7 @@ export const InlineText = forwardRef<HTMLDivElement, InlineTextProps>(
           className
         )}
         data-placeholder={placeholder}
-        style={{ whiteSpace: multiline ? "pre-wrap" : "nowrap" }}
+        style={{ whiteSpace: multiline ? "pre-wrap" : "nowrap", ...style }}
       />
     )
   }

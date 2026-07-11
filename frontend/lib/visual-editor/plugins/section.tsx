@@ -12,6 +12,13 @@ export interface SectionData {
   title: string
 }
 
+/* Fable5 heading sizes */
+const LEVEL_STYLE: Record<SectionData["level"], React.CSSProperties> = {
+  section:        { fontSize: "25px",  fontWeight: 700, lineHeight: 1.3,  letterSpacing: "-0.01em" },
+  subsection:     { fontSize: "20px",  fontWeight: 700, lineHeight: 1.35 },
+  subsubsection:  { fontSize: "17px",  fontWeight: 700, lineHeight: 1.4  },
+}
+
 export const sectionPlugin: BlockPlugin<SectionData> = {
   type: "section",
   label: "Section",
@@ -25,7 +32,7 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
 
     const handleChange = useCallback(
       (title: string) => onChange({ ...block.data, title }),
-      [block.data, onChange]
+      [block.data, onChange],
     )
 
     const handleKeyDown = useCallback(
@@ -41,7 +48,7 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
           e.preventDefault()
           onSplit(
             { ...block.data, title: text.slice(0, offset) },
-            { ...block.data, title: text.slice(offset) }
+            { ...block.data, title: text.slice(offset) },
           )
           return
         }
@@ -61,23 +68,15 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
           }
         }
       },
-      [block.data, onSplit, onMergeUp, slashState]
+      [block.data, onSplit, onMergeUp, slashState],
     )
 
     const handleInsert = useCallback(
-      (type: BlockType) => {
-        setSlashState(null)
-        onInsertAfter?.(type)
-      },
-      [onInsertAfter]
+      (type: BlockType) => { setSlashState(null); onInsertAfter?.(type) },
+      [onInsertAfter],
     )
 
-    const sizeClass =
-      block.data.level === "section"
-        ? "text-2xl font-bold mt-10 mb-4"
-        : block.data.level === "subsection"
-        ? "text-xl font-semibold mt-8 mb-3"
-        : "text-lg font-semibold mt-6 mb-2"
+    const levelStyle = LEVEL_STYLE[block.data.level]
 
     return (
       <div className="relative">
@@ -88,16 +87,29 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
           onFocus={onFocus}
           onBlur={onBlur}
           onKeyDown={handleKeyDown}
-          placeholder="Section title"
-          className={cn(
-            "tracking-tight text-[var(--visual-editor-text)] font-serif",
-            sizeClass
-          )}
+          placeholder={
+            block.data.level === "section"
+              ? "Section title"
+              : block.data.level === "subsection"
+              ? "Subsection title"
+              : "Subsubsection title"
+          }
+          className="outline-none"
+          style={{
+            fontFamily: "Georgia, 'Times New Roman', serif",
+            color: "var(--visual-editor-text)",
+            caretColor: "var(--primary)",
+            ...levelStyle,
+          }}
           multiline={false}
         />
         {slashState?.active && (
           <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] shadow-floating overflow-hidden">
-            <SlashCommandMenu query={slashState.query} onSelect={handleInsert} onClose={() => setSlashState(null)} />
+            <SlashCommandMenu
+              query={slashState.query}
+              onSelect={handleInsert}
+              onClose={() => setSlashState(null)}
+            />
           </div>
         )}
       </div>

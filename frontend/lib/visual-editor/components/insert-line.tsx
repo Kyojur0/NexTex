@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { Plus } from "lucide-react"
 import type { BlockType } from "../types"
 import { getAllPlugins } from "../plugins"
 
@@ -16,54 +15,132 @@ export function InsertLine({ onInsert }: InsertLineProps) {
 
   return (
     <div
-      className="relative h-6 flex items-center justify-center my-1 group/insert"
+      /* Fable5: 20px tall, flex row, cursor pointer */
+      style={{ height: "20px", display: "flex", alignItems: "center", cursor: "pointer", margin: "0 -14px" }}
+      className="group/iline"
       onMouseLeave={() => setOpen(false)}
     >
-      <div className="absolute inset-x-0 h-px bg-transparent group-hover/insert:bg-[var(--visual-editor-insert-line)] transition-colors duration-150" />
-
+      {/* Left rule */}
       <div
+        style={{ flex: 1, height: "1px", background: "transparent", transition: "background 0.12s" }}
+        className="group-hover/iline:![background:var(--visual-editor-insert-line)]"
+      />
+
+      {/* + button — center */}
+      <div
+        style={{ position: "relative", margin: "0 6px" }}
         className={cn(
-          "relative z-10 flex items-center justify-center",
-          "opacity-0 group-hover/insert:opacity-100 transition-opacity duration-150",
-          open && "opacity-100"
+          "opacity-0 group-hover/iline:opacity-100 transition-opacity duration-150",
+          open && "!opacity-100",
         )}
       >
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="h-5 w-5 rounded-full bg-[var(--visual-editor-toolbar)] border border-[var(--visual-editor-toolbar-border)] text-[var(--visual-editor-text-dim)] hover:text-[var(--visual-editor-text)] flex items-center justify-center transition-colors"
+          style={{
+            width: "16px",
+            height: "16px",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: open ? "var(--primary)" : "var(--visual-editor-bg)",
+            color: open ? "#FFF" : "var(--visual-editor-text-dim)",
+            boxShadow: open ? "0 1px 3px rgba(196,69,40,0.4)" : "none",
+            transition: "all 0.12s",
+            border: "none",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+          className={cn(
+            "group-hover/iline:![background:var(--primary)]",
+            "group-hover/iline:![color:#FFF]",
+            "group-hover/iline:![box-shadow:0_1px_3px_rgba(196,69,40,0.4)]",
+          )}
+          title="Insert block"
         >
-          <Plus className="h-3 w-3" />
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+            <path d="M4 1V7M1 4H7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
         </button>
 
+        {/* Block type popup */}
         {open && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 p-1.5 rounded-xl border border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] shadow-floating flex items-center gap-1 z-50">
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              top: "calc(100% + 8px)",
+              zIndex: 50,
+              background: "var(--visual-editor-canvas)",
+              border: "1px solid var(--visual-editor-toolbar-border)",
+              borderRadius: "10px",
+              boxShadow: "var(--shadow-elevation-3)",
+              padding: "6px",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+            }}
+          >
             {plugins.map((plugin) => {
               const Icon = plugin.icon
               return (
                 <button
                   key={plugin.type}
                   type="button"
-                  onClick={() => {
-                    onInsert(plugin.type)
-                    setOpen(false)
-                  }}
-                  className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[var(--visual-editor-tool-hover)] transition-colors min-w-[60px]"
+                  onClick={() => { onInsert(plugin.type); setOpen(false) }}
                   title={plugin.label}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "4px",
+                    padding: "8px",
+                    borderRadius: "7px",
+                    minWidth: "56px",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    transition: "background 0.1s",
+                  }}
+                  className="hover:![background:var(--visual-editor-tool-hover)]"
                 >
                   <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center"
-                    style={{ backgroundColor: `${plugin.color}20`, color: plugin.color }}
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "7px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: `${plugin.color}20`,
+                      color: plugin.color,
+                    }}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon style={{ width: "14px", height: "14px" }} />
                   </div>
-                  <span className="text-[9px] text-[var(--visual-editor-text-dim)] font-medium">{plugin.label}</span>
+                  <span
+                    style={{
+                      fontSize: "9px",
+                      fontWeight: 500,
+                      color: "var(--visual-editor-text-dim)",
+                    }}
+                  >
+                    {plugin.label}
+                  </span>
                 </button>
               )
             })}
           </div>
         )}
       </div>
+
+      {/* Right rule */}
+      <div
+        style={{ flex: 1, height: "1px", background: "transparent", transition: "background 0.12s" }}
+        className="group-hover/iline:![background:var(--visual-editor-insert-line)]"
+      />
     </div>
   )
 }

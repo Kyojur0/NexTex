@@ -120,7 +120,7 @@ export function parseLaTeXToBlocks(latex: string): AnyVisualBlock[] {
         if (envName === "table") {
           const tabularMatch = content.match(/\\begin\{tabular\}\{([^}]*)\}([\s\S]*)\\end\{tabular\}/)
           const captionMatch = content.match(/\\caption\{([^}]*)\}/)
-          let rows: string[][] = []
+          let rows: TableData["rows"] = []
           if (tabularMatch) {
             const body = tabularMatch[2].trim()
             rows = body
@@ -128,8 +128,8 @@ export function parseLaTeXToBlocks(latex: string): AnyVisualBlock[] {
               .map((row) =>
                 row
                   .split("&")
-                  .map((cell) => cell.trim())
-                  .filter((cell) => cell.length > 0)
+                  .map((cell) => ({ content: cell.trim(), colspan: 1, rowspan: 1 }))
+                  .filter((cell) => cell.content.length > 0)
               )
               .filter((row) => row.length > 0)
           }

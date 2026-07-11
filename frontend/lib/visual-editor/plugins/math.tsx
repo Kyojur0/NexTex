@@ -12,7 +12,7 @@ export interface MathData {
 
 export const mathPlugin: BlockPlugin<MathData> = {
   type: "math",
-  label: "Math",
+  label: "Equation",
   icon: Sigma,
   color: "#8b5cf6",
   defaultData: { latex: "E = mc^2" },
@@ -34,22 +34,62 @@ export const mathPlugin: BlockPlugin<MathData> = {
 
     const handleChange = useCallback(
       (latex: string) => onChange({ ...block.data, latex }),
-      [block.data, onChange]
+      [block.data, onChange],
     )
 
     return (
-      <div className="py-2" onFocus={onFocus} onBlur={onBlur}>
-        <div className="flex justify-center overflow-x-auto">
-          <div ref={previewRef} className="text-[var(--visual-editor-text)]" />
+      <div onFocus={onFocus} onBlur={onBlur} style={{ padding: "6px 0" }}>
+        {/* Fable5 equation layout: spacer | equation centered | number right */}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ width: "44px", flexShrink: 0 }} />
+          <div
+            ref={previewRef}
+            style={{
+              flex: 1,
+              textAlign: "center",
+              fontSize: "19px",
+              fontStyle: "italic",
+              color: "var(--visual-editor-text)",
+              letterSpacing: "0.01em",
+              overflowX: "auto",
+            }}
+          />
+          <div
+            style={{
+              width: "44px",
+              flexShrink: 0,
+              textAlign: "right",
+              fontSize: "14px",
+              color: "var(--visual-editor-text-dim)",
+              fontFamily: "Georgia, serif",
+            }}
+          >
+            {/* equation number — placeholder */}
+          </div>
         </div>
+
+        {/* LaTeX input — shown only when active */}
         {isActive && (
-          <div className="mt-2">
+          <div style={{ marginTop: "10px" }}>
             <input
               type="text"
               value={block.data.latex}
               onChange={(e) => handleChange(e.target.value)}
-              className="w-full bg-[var(--visual-editor-bg)] border border-[var(--visual-editor-toolbar-border)] rounded-md px-3 py-1.5 font-mono text-sm text-[var(--visual-editor-text)] placeholder:text-[var(--visual-editor-text-dim)] focus:outline-none focus:border-[var(--primary)]"
-              placeholder="e.g. E = mc^2"
+              autoFocus
+              style={{
+                width: "100%",
+                background: "var(--visual-editor-bg)",
+                border: "1px solid var(--visual-editor-toolbar-border)",
+                borderRadius: "5px",
+                padding: "6px 12px",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: "12px",
+                color: "var(--visual-editor-text)",
+                outline: "none",
+                caretColor: "var(--primary)",
+              }}
+              placeholder="LaTeX expression, e.g. E = mc^2"
+              onFocus={(e) => e.currentTarget.select()}
             />
           </div>
         )}

@@ -398,11 +398,38 @@ export const VisualEditor = memo(function VisualEditor() {
         </div>
       </div>
 
-      {/* Status bar */}
-      <div className="shrink-0 flex items-center px-4 py-2 border-t border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] text-[11px] text-[var(--visual-editor-text-dim)]">
-        <span className="tabular-nums">{blocks.length} blocks</span>
-        <span className="text-[var(--visual-editor-toolbar-border)] mx-3">•</span>
-        <span>Click any block to edit inline</span>
+      {/* Status bar — Fable5 style, 34px */}
+      <div
+        className="shrink-0 h-[34px] flex items-center px-4 text-[11.5px]"
+        style={{
+          borderTop: "1px solid var(--visual-editor-toolbar-border)",
+          background: "var(--visual-editor-toolbar)",
+          color: "var(--visual-editor-text-dim)",
+        }}
+      >
+        <span className="font-medium" style={{ color: "var(--visual-editor-text)" }}>
+          {blocks.length} {blocks.length === 1 ? "block" : "blocks"}
+        </span>
+        <span className="mx-1.5">·</span>
+        <span>{blocks.reduce((n, b) => {
+          const text = (b.data as { text?: string })?.text || ""
+          return n + (text.match(/\S+/g)?.length || 0)
+        }, 0)} words</span>
+
+        <span className="mx-3" style={{ color: "var(--visual-editor-toolbar-border)" }}>|</span>
+
+        {/* Saved indicator */}
+        <span className="flex items-center gap-1.5">
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: "var(--saved)" }}
+          />
+          <span>{dirty ? "Saving…" : "Saved"}</span>
+        </span>
+
+        <span className="ml-auto">
+          Click a block to select · Drag handle to reorder · Hover between blocks to insert
+        </span>
       </div>
     </div>
   )

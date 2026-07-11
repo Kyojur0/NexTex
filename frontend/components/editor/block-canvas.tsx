@@ -65,12 +65,8 @@ export const BlockCanvas = memo(function BlockCanvas({
   onMoveDown,
 }: BlockCanvasProps) {
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -95,30 +91,45 @@ export const BlockCanvas = memo(function BlockCanvas({
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+        {/* Canvas wrapper — warm parchment background */}
         <div
           data-testid="block-canvas"
-          className="flex-1 overflow-y-auto px-4 py-8 bg-[var(--visual-editor-bg)]"
+          className="flex-1 overflow-y-auto scrollbar-thin"
+          style={{ background: "var(--visual-editor-bg)", padding: "32px 24px 80px" }}
         >
+          {/* Page card — white sheet centered on canvas */}
           <div
             className={cn(
-              "max-w-[850px] w-full mx-auto min-h-[calc(100%-4rem)]",
-              "bg-[var(--visual-editor-canvas)] border border-[var(--visual-editor-canvas-border)] rounded-lg shadow-2xl",
-              "px-16 py-16"
+              "w-full mx-auto min-h-[900px]",
+              "bg-[var(--visual-editor-canvas)]",
+              "border border-[var(--visual-editor-canvas-border)]",
+              "rounded-[6px]",
             )}
+            style={{
+              maxWidth: "820px",
+              boxShadow: "var(--visual-editor-canvas-shadow)",
+              padding: "52px 72px 60px",
+            }}
           >
             {blocks.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center text-center gap-4 text-[var(--visual-editor-text-dim)] max-w-xs mx-auto py-20"
+                className="flex flex-col items-center text-center gap-4 max-w-xs mx-auto py-20"
+                style={{ color: "var(--visual-editor-text-dim)" }}
               >
-                <div className="w-16 h-16 rounded-2xl bg-[var(--visual-editor-tool-hover)] flex items-center justify-center">
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: "var(--visual-editor-tool-hover)" }}
+                >
                   <FileText className="h-8 w-8 opacity-50" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-[var(--visual-editor-text)]">Your document is empty</p>
+                  <p className="text-sm font-medium" style={{ color: "var(--visual-editor-text)" }}>
+                    Your document is empty
+                  </p>
                   <p className="text-xs mt-1 leading-relaxed">
-                    Type below or use the Insert menu to start building your document.
+                    Use the Insert menu above or hover between blocks to add content.
                   </p>
                 </div>
               </motion.div>

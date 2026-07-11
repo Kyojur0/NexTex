@@ -15,26 +15,10 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
 import {
-  Sun,
-  Moon,
-  Monitor,
-  FolderOpen,
-  File,
-  Save,
-  Download,
-  Settings,
-  Play,
-  ChevronDown,
-  Plus,
-  Clock,
-  FileText,
-  Keyboard,
-  PanelRight,
-  PanelRightClose,
-  PanelLeft,
-  PanelLeftClose,
-  Sparkles,
-  Folder,
+  Sun, Moon, Monitor, FolderOpen, File, Save, Download,
+  Settings, Play, ChevronDown, Plus, Clock, FileText,
+  Keyboard, PanelRight, PanelRightClose, PanelLeft,
+  PanelLeftClose, Sparkles, Folder,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -60,57 +44,59 @@ function formatWorkspacePath(path: string): string {
 }
 
 export const Header = memo(function Header({
-  onOpenFolder,
-  onOpenFile,
-  onSave,
-  onSaveAs,
-  onBuild,
-  onNewFromTemplate,
-  onOpenSettings,
-  onTogglePreview,
-  showPreview,
-  sidebarCollapsed,
-  onToggleSidebar,
+  onOpenFolder, onOpenFile, onSave, onSaveAs, onBuild,
+  onNewFromTemplate, onOpenSettings, onTogglePreview,
+  showPreview, sidebarCollapsed, onToggleSidebar,
 }: HeaderProps) {
-  const projectName = useEditorStore((s) => s.projectName)
-  const isModified = useEditorStore((s) => s.isModified)
-  const isBuilding = useEditorStore((s) => s.isBuilding)
-  const workspaceRoot = useEditorStore((s) => s.workspaceRoot)
+  const projectName    = useEditorStore((s) => s.projectName)
+  const isModified     = useEditorStore((s) => s.isModified)
+  const isBuilding     = useEditorStore((s) => s.isBuilding)
+  const workspaceRoot  = useEditorStore((s) => s.workspaceRoot)
   const trustedLocalMode = useEditorStore((s) => s.trustedLocalMode)
   const setShowAISpotlight = useEditorStore((s) => s.setShowAISpotlight)
 
   return (
     <header
       suppressHydrationWarning
-      className={cn(
-        "h-12 border-b border-border/60 flex items-center justify-between px-3 select-none shrink-0",
-        "bg-gradient-to-b from-background to-secondary/30"
-      )}
+      className="h-12 flex items-center justify-between px-3 select-none shrink-0 transition-colors"
+      style={{
+        borderBottom: "1px solid var(--border)",
+        background: "var(--background)",
+      }}
     >
-      {/* Left: Logo + Project */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-foreground shadow-elevated flex items-center justify-center">
-            <span className="text-background text-xs font-bold leading-none">N</span>
+      {/* Left: Logo + nav */}
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+
+        {/* Wordmark */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center shadow-elevated shrink-0"
+            style={{ background: "var(--foreground)" }}
+          >
+            <span className="text-[11px] font-bold leading-none" style={{ color: "var(--background)" }}>N</span>
           </div>
           <span className="font-semibold text-sm tracking-tight hidden sm:block">NexTex</span>
         </div>
 
+        {/* Sidebar toggle */}
         <Button
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0 rounded-lg"
           onClick={onToggleSidebar}
           aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          {sidebarCollapsed
+            ? <PanelLeft className="h-4 w-4" />
+            : <PanelLeftClose className="h-4 w-4" />
+          }
         </Button>
 
-        <div className="h-5 w-px bg-border/60 shrink-0" />
+        {/* Vertical separator */}
+        <div className="h-5 w-px shrink-0" style={{ background: "var(--border)" }} />
 
         {/* File menus */}
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-0.5">
           <TopMenu label="File">
             <DropdownMenuItem onClick={onNewFromTemplate}>
               <Plus className="mr-2 h-4 w-4" /> New from Template
@@ -138,7 +124,7 @@ export const Header = memo(function Header({
               <span className="ml-auto text-xs text-muted-foreground">⌘S</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onSaveAs}>
-              <Download className="mr-2 h-4 w-4" /> Save As...
+              <Download className="mr-2 h-4 w-4" /> Save As…
               <span className="ml-auto text-xs text-muted-foreground">⌘⇧S</span>
             </DropdownMenuItem>
           </TopMenu>
@@ -157,16 +143,24 @@ export const Header = memo(function Header({
             <DropdownMenuItem><span className="font-mono text-xs mr-2">\edu</span> Education entry</DropdownMenuItem>
             <DropdownMenuItem><span className="font-mono text-xs mr-2">\skill</span> Skills row</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem><Keyboard className="mr-2 h-4 w-4" /> All Snippets...</DropdownMenuItem>
+            <DropdownMenuItem><Keyboard className="mr-2 h-4 w-4" /> All Snippets…</DropdownMenuItem>
           </TopMenu>
         </nav>
 
-        {/* Project name + modified dot + workspace */}
-        <div className="flex items-center gap-2 min-w-0 ml-2">
-          <span className="text-xs text-muted-foreground truncate max-w-32">{projectName}</span>
-          {isModified && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" title="Unsaved changes" />}
+        {/* Project name */}
+        <div className="flex items-center gap-1.5 min-w-0 ml-1">
+          <span className="text-xs truncate max-w-32" style={{ color: "var(--muted-foreground)" }}>
+            {projectName}
+          </span>
+          {isModified && (
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: "var(--primary)" }}
+              title="Unsaved changes"
+            />
+          )}
           {workspaceRoot && (
-            <div className="hidden md:flex items-center gap-1.5 ml-2 text-[10px] text-muted-foreground/70">
+            <div className="hidden md:flex items-center gap-1 ml-1 text-[10px]" style={{ color: "var(--muted-foreground)" }}>
               <Folder className="h-3 w-3" />
               <span title={workspaceRoot} className="truncate max-w-40">
                 {formatWorkspacePath(workspaceRoot)}
@@ -179,31 +173,36 @@ export const Header = memo(function Header({
         </div>
       </div>
 
-      {/* Right: Controls */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      {/* Right: actions */}
+      <div className="flex items-center gap-1 shrink-0">
+        {/* AI */}
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-2.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground rounded-lg"
+          className="h-8 px-2.5 text-xs gap-1.5 rounded-lg"
+          style={{ color: "var(--muted-foreground)" }}
           onClick={() => setShowAISpotlight(true)}
         >
           <Sparkles className="h-3.5 w-3.5" />
           <span className="hidden sm:block">AI</span>
-          <span className="hidden sm:block text-muted-foreground/60">⌘K</span>
+          <span className="hidden sm:block text-[10px]" style={{ color: "var(--muted-foreground)", opacity: 0.6 }}>⌘K</span>
         </Button>
 
-        <div className="h-5 w-px bg-border/60 mx-0.5" />
+        <div className="h-5 w-px mx-0.5" style={{ background: "var(--border)" }} />
 
+        {/* Preview toggle */}
         <Button
           variant="ghost"
           size="sm"
-          className={cn("h-8 w-8 p-0 rounded-lg", !showPreview && "text-muted-foreground")}
+          className="h-8 w-8 p-0 rounded-lg"
+          style={{ color: showPreview ? undefined : "var(--muted-foreground)" }}
           onClick={onTogglePreview}
           aria-label={showPreview ? "Hide preview" : "Show preview"}
         >
           {showPreview ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
         </Button>
 
+        {/* Settings */}
         <Button
           variant="ghost"
           size="sm"
@@ -216,21 +215,28 @@ export const Header = memo(function Header({
 
         <ThemeSelector />
 
-        <div className="h-5 w-px bg-border/60 mx-0.5" />
+        <div className="h-5 w-px mx-0.5" style={{ background: "var(--border)" }} />
 
+        {/* Build button — accent colored */}
         <Button
           size="sm"
           className="h-8 px-3.5 text-xs font-medium gap-1.5 rounded-lg shadow-elevated"
+          style={{
+            background: "var(--primary)",
+            color: "var(--primary-foreground)",
+          }}
           onClick={onBuild}
           disabled={isBuilding}
         >
           <Play className="h-3.5 w-3.5 fill-current" />
-          {isBuilding ? "Building..." : "Build"}
+          {isBuilding ? "Building…" : "Build"}
         </Button>
       </div>
     </header>
   )
 })
+
+/* ── Sub-components ────────────────────────────────────────── */
 
 function TopMenu({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -239,12 +245,13 @@ function TopMenu({ label, children }: { label: string; children: React.ReactNode
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 rounded-lg"
+          className="h-7 px-2 text-xs font-medium rounded-lg"
+          style={{ color: "var(--muted-foreground)" }}
         >
           {label} <ChevronDown className="ml-0.5 h-3 w-3 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52 rounded-xl border-border/60 shadow-floating">
+      <DropdownMenuContent align="start" className="w-52 rounded-xl shadow-floating">
         {children}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -260,7 +267,7 @@ const ThemeSelector = memo(function ThemeSelector() {
           <Monitor className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="rounded-xl border-border/60 shadow-floating">
+      <DropdownMenuContent align="end" className="rounded-xl shadow-floating">
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun className="mr-2 h-4 w-4" /> Light
         </DropdownMenuItem>
@@ -277,8 +284,8 @@ const ThemeSelector = memo(function ThemeSelector() {
 
 function RecentFilesList() {
   const recentFiles = useEditorStore((s) => s.recentFiles)
-  const openFile = useEditorStore((s) => s.openFile)
-  const files = useEditorStore((s) => s.files)
+  const openFile    = useEditorStore((s) => s.openFile)
+  const files       = useEditorStore((s) => s.files)
 
   const findIdByPath = (path: string): string | null => {
     const search = (items: FileItem[]): string | null => {
@@ -305,13 +312,11 @@ function RecentFilesList() {
         return (
           <DropdownMenuItem
             key={path}
-            onClick={() => {
-              if (id) openFile(id, path)
-            }}
+            onClick={() => { if (id) openFile(id, path) }}
             disabled={!id}
           >
             <FileText className="mr-2 h-4 w-4" />
-            {path.split('/').pop() || path}
+            {path.split("/").pop() || path}
           </DropdownMenuItem>
         )
       })}
