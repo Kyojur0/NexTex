@@ -15,6 +15,12 @@ venv/
 # FastAPI/Uvicorn
 *.log
 
+# NexTex runtime state & build output
+backend/.nextex_config.json
+backend/test.txt
+.nextex_builds/
+tex_files/.nextex_builds/
+
 # Node / Next.js
 node_modules/
 .next/

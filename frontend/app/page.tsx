@@ -5,6 +5,8 @@ import { ThemeProvider } from "next-themes"
 import { Header } from "@/components/editor/header"
 import { FileTree } from "@/components/editor/file-tree"
 import { EnhancedCodeEditor } from "@/components/editor/enhanced-code-editor"
+import { EditorTabBar } from "@/components/editor/editor-tab-bar"
+import { VisualEditor } from "@/components/editor/visual-editor"
 import { PdfPreview } from "@/components/editor/pdf-preview"
 import { SmartTerminal } from "@/components/editor/smart-terminal"
 import { TemplateModal } from "@/components/editor/template-modal"
@@ -26,7 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { AlertTriangle, FolderOpen } from "lucide-react"
+import { AlertTriangle, FolderOpen, PanelLeftClose } from "lucide-react"
 import * as api from "@/lib/api"
 
 function findFirstTexFile(nodes: api.FileNode[]): api.FileNode | null {
@@ -158,6 +160,7 @@ const EditorPane = memo(function EditorPane() {
   const content = useEditorStore((s) => s.content)
   const settings = useEditorStore((s) => s.settings)
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
+  const errorLines = useEditorStore((s) => s.errorLines)
 
   const fileName = activeFilePath ? activeFilePath.split("/").pop() || "Untitled" : "Untitled"
 
@@ -177,11 +180,18 @@ const EditorPane = memo(function EditorPane() {
       enableSyntaxHighlight={settings.enableSyntaxHighlight}
       wordWrap={settings.wordWrap}
       onAISpotlight={() => useEditorStore.getState().setShowAISpotlight(true)}
+      errorLines={errorLines}
     />
   )
 })
 
-const PreviewPane = memo(function PreviewPane() {
+const PreviewPane = memo(function PreviewPane({
+  collapsed,
+  onToggleCollapse,
+}: {
+  collapsed: boolean
+  onToggleCollapse: () => void
+}) {
   const pdfUrl = useEditorStore((s) => s.pdfUrl)
   const isBuilding = useEditorStore((s) => s.isBuilding)
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
@@ -195,6 +205,8 @@ const PreviewPane = memo(function PreviewPane() {
       fileName={fileName}
       pdfUrl={pdfUrl}
       isBuilding={isBuilding}
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
     />
   )
 })
@@ -226,22 +238,43 @@ const TerminalPane = memo(function TerminalPane() {
 
 const SidebarPane = memo(function SidebarPane({
   width,
+  collapsed,
   showHistory,
   onShowHistory,
   onFileSelect,
+  onExpand,
 }: {
   width: number
+  collapsed: boolean
   showHistory: boolean
   onShowHistory: () => void
   onFileSelect: (id: string, path: string) => void
+  onExpand: () => void
 }) {
   const files = useEditorStore((s) => s.files)
   const activeFileId = useEditorStore((s) => s.activeFileId)
 
+  if (collapsed) {
+    return (
+      <div className="w-10 shrink-0 flex flex-col items-center py-2 border-r border-border/60 bg-sidebar/30">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 rounded-lg"
+          onClick={onExpand}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+        >
+          <PanelLeftClose className="h-4 w-4 rotate-180" />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div
       style={{ width: `${width}px` }}
-      className="flex flex-col border-r border-border shrink-0 overflow-hidden"
+      className="flex flex-col border-r border-border/60 shrink-0 overflow-hidden bg-sidebar/30"
     >
       {showHistory ? (
         <VersionHistory onClose={() => useEditorStore.getState().setShowHistory(false)} />
@@ -294,6 +327,7 @@ function EditorInner() {
   const showTemplateModal = useEditorStore((s) => s.showTemplateModal)
   const showSettings = useEditorStore((s) => s.showSettings)
   const showAISpotlight = useEditorStore((s) => s.showAISpotlight)
+  const activeEditorTab = useEditorStore((s) => s.activeEditorTab)
   const sidebarWidth = useEditorStore((s) => s.sidebarWidth)
   const isDragging = useEditorStore((s) => s.isDragging)
 
@@ -309,6 +343,8 @@ function EditorInner() {
   const [showOpenFolder, setShowOpenFolder] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [splitRatio, setSplitRatio] = useState(0.55)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const splitDragging = useRef(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
 
@@ -363,23 +399,6 @@ function EditorInner() {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
-
-  // Autosave effect - reads current state inside timer to keep deps stable
-  useEffect(() => {
-    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
-      // Only react to content changes when auto-save is on
-      if (
-        state.content !== prevState.content &&
-        state.isModified &&
-        state.activeFilePath &&
-        state.settings.autoSave
-      ) {
-        // Debounce via a module-level timer would be cleaner,
-        // but for simplicity we use a local ref timer inside the subscriber.
-      }
-    })
-    return () => unsubscribe()
   }, [])
 
   // Debounced autosave using a ref timer
@@ -503,6 +522,8 @@ function EditorInner() {
       <Header
         onOpenFolder={() => setShowOpenFolder(true)}
         onOpenFile={() => {}}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         onSave={handleSave}
         onSaveAs={() => {}}
         onBuild={handleBuild}
@@ -516,49 +537,82 @@ function EditorInner() {
       <div className="flex-1 flex overflow-hidden">
         <SidebarPane
           width={sidebarWidth}
+          collapsed={sidebarCollapsed}
           showHistory={showHistory}
           onShowHistory={() => useEditorStore.getState().setShowHistory(true)}
           onFileSelect={handleFileSelect}
+          onExpand={() => setSidebarCollapsed(false)}
         />
 
         {/* Sidebar resize handle */}
-        <div
-          onMouseDown={handleSidebarMouseDown}
-          className={cn(
-            "w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors shrink-0",
-            isDragging && "bg-primary/40"
-          )}
-        />
+        {!sidebarCollapsed && (
+          <div
+            onMouseDown={handleSidebarMouseDown}
+            className={cn(
+              "w-1.5 cursor-col-resize transition-colors shrink-0 relative group",
+              "bg-border/30 hover:bg-primary/30",
+              isDragging && "bg-primary/40"
+            )}
+          >
+            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-border/50 group-hover:bg-primary/40 transition-colors" />
+          </div>
+        )}
 
         {/* Editor + Preview horizontal split */}
         <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
           {/* Code editor */}
           <div
-            style={{ width: showPreview ? `${splitRatio * 100}%` : "100%" }}
+            style={{ width: showPreview && !previewCollapsed ? `${splitRatio * 100}%` : "100%" }}
             className="flex flex-col overflow-hidden transition-all duration-200 p-3"
           >
             {isLoading ? (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                Loading workspace...
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                <span className="text-sm">Loading workspace...</span>
               </div>
             ) : (
-              <EditorPane />
+              <>
+                {activeEditorTab === "text" && <EditorTabBar />}
+                <div className={cn("flex-1 overflow-hidden", activeEditorTab === "text" && "mt-3")}>
+                  {activeEditorTab === "text" ? <EditorPane /> : <VisualEditor />}
+                </div>
+              </>
             )}
           </div>
 
-          {/* Horizontal divider (only when preview visible) */}
-          {showPreview && (
+          {/* Horizontal divider (only when preview visible and expanded) */}
+          {showPreview && !previewCollapsed && (
             <div
               onMouseDown={handleSplitMouseDown}
-              className="w-1 bg-border hover:bg-primary/30 cursor-col-resize transition-colors shrink-0"
-            />
+              className="w-1.5 cursor-col-resize transition-colors shrink-0 relative group bg-border/30 hover:bg-primary/30"
+            >
+              <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-border/50 group-hover:bg-primary/40 transition-colors" />
+            </div>
           )}
 
           {/* PDF preview */}
           {showPreview && (
-            <div style={{ width: `${(1 - splitRatio) * 100}%` }} className="flex flex-col overflow-hidden p-3">
-              <PreviewPane />
-            </div>
+            <>
+              {!previewCollapsed && (
+                <div
+                  style={{ width: `${(1 - splitRatio) * 100}%` }}
+                  className="flex flex-col overflow-hidden p-3 pl-1.5"
+                >
+                  <PreviewPane
+                    collapsed={previewCollapsed}
+                    onToggleCollapse={() => setPreviewCollapsed((c) => !c)}
+                  />
+                </div>
+              )}
+              {previewCollapsed && (
+                <div className="flex flex-col overflow-hidden py-3 pl-1.5">
+                  <PreviewPane
+                    collapsed={previewCollapsed}
+                    onToggleCollapse={() => setPreviewCollapsed((c) => !c)}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

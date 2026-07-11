@@ -1,36 +1,28 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { DM_Sans, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
-const inter = Inter({ 
-  subsets: ["latin"],
-  variable: '--font-sans'
-});
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  axes: ['opsz'],
+  variable: '--font-sans',
+})
 
-const jetbrainsMono = JetBrains_Mono({ 
-  subsets: ["latin"],
-  variable: '--font-mono'
-});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+})
 
 export const metadata: Metadata = {
-  title: 'NexTex - Modern LaTeX Editor',
+  title: 'NexTex — Modern LaTeX Editor',
   description: 'A production-grade local LaTeX editor with real filesystem integration, instant preview, and trusted local mode.',
   generator: 'v0.app',
   icons: {
     icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
+      { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
+      { url: '/icon-dark-32x32.png',  media: '(prefers-color-scheme: dark)'  },
+      { url: '/icon.svg', type: 'image/svg+xml' },
     ],
     apple: '/apple-icon.png',
   },
@@ -38,8 +30,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#fafafa' },
-    { media: '(prefers-color-scheme: dark)', color: '#1a1a1a' },
+    { media: '(prefers-color-scheme: light)', color: '#F7F5F0' },
+    { media: '(prefers-color-scheme: dark)',  color: '#211E1A' },
   ],
   width: 'device-width',
   initialScale: 1,
@@ -47,12 +39,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+      <body className={`${dmSans.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         {children}
         <Analytics />
       </body>

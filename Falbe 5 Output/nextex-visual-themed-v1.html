@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexTex — Visual Mode (light / dark)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #C44528;
+    --accent-rgb: 196, 69, 40;
+    --bg: #F7F5F0;
+    --surface: #FFFFFF;
+    --page-border: #E8E4DB;
+    --page-shadow: 0 1px 3px rgba(60,50,40,0.06);
+    --border: #E6E1D5;
+    --border2: #E0DACE;
+    --border2-hover: #CFC7B6;
+    --text: #2B2620;
+    --text-body: #33302A;
+    --muted: #6B6459;
+    --faint: #8A8275;
+    --fainter: #B5AC9C;
+    --icon: #514A3F;
+    --hover-bg: #EDE9DF;
+    --block-hover: rgba(60,50,40,0.028);
+    --iline-rule: #EDE8DD;
+    --iline-hot: #E4B7A9;
+    --iline-plus-bg: #FBFAF6;
+    --fig-bg: #FCFBF8;
+    --fig-border: #D6CFC0;
+    --menu-bg: #FFFFFF;
+    --menu-shadow: 0 6px 20px rgba(60,50,40,0.12);
+    --menu-hover: #F5F1E8;
+    --code-bg: #FBF7EE;
+    --code-border: #EDE6D6;
+    --code-text: #3A342B;
+    --ln: #C9BFA9;
+    --tok-cmd: #C13515;
+    --tok-env: #8A6A3F;
+    --tok-com: #4E7B3A;
+    --tok-math: #2456A6;
+    --saved: #7BA05B;
+    --saving: #D9A441;
+    --scroll: #DDD6C7;
+  }
+  [data-theme="dark"] {
+    --accent: #E05838;
+    --accent-rgb: 224, 88, 56;
+    --bg: #211E1A;
+    --surface: #2A2620;
+    --page-border: #3A342C;
+    --page-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    --border: #363028;
+    --border2: #403A31;
+    --border2-hover: #554D40;
+    --text: #EDE8DF;
+    --text-body: #E3DDD1;
+    --muted: #A69C8D;
+    --faint: #8F887B;
+    --fainter: #6B6459;
+    --icon: #C9C1B2;
+    --hover-bg: #322D26;
+    --block-hover: rgba(237,232,223,0.035);
+    --iline-rule: #3A342C;
+    --iline-hot: #7A4636;
+    --iline-plus-bg: #2A2620;
+    --fig-bg: #262220;
+    --fig-border: #4A4338;
+    --menu-bg: #2E2A24;
+    --menu-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    --menu-hover: #3A342C;
+    --code-bg: #1D1A16;
+    --code-border: #332E27;
+    --code-text: #D8D1C3;
+    --ln: #5E574B;
+    --tok-cmd: #E8785A;
+    --tok-env: #C9A26B;
+    --tok-com: #8FAF72;
+    --tok-math: #7FA6E0;
+    --saved: #8FAF72;
+    --saving: #D9A441;
+    --scroll: #453F35;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased;
+    overflow: hidden; transition: background 0.25s;
+  }
+  .app { height: 100vh; display: flex; flex-direction: column; }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    height: 46px; flex: none; display: flex; align-items: center; gap: 2px;
+    padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--bg);
+    position: relative; z-index: 30; transition: background 0.25s, border-color 0.25s;
+  }
+  .tsep { width: 1px; height: 18px; background: var(--border2); margin: 0 6px; }
+  .tbtn {
+    min-width: 27px; height: 27px; padding: 0 5px; border: none; background: transparent;
+    border-radius: 5px; display: flex; align-items: center; justify-content: center;
+    color: var(--icon); cursor: pointer; font-family: inherit;
+  }
+  .tbtn:hover { background: var(--hover-bg); }
+  .tbtn.on { background: rgba(var(--accent-rgb), 0.10); color: var(--accent); }
+  .serifB { font-family: Georgia, serif; font-size: 13.5px; font-weight: 700; }
+  .serifI { font-family: Georgia, serif; font-size: 13.5px; font-style: italic; }
+  .serifU { font-family: Georgia, serif; font-size: 13.5px; text-decoration: underline; text-underline-offset: 2px; }
+  .fx { font-family: Georgia, serif; font-size: 13px; font-style: italic; }
+
+  .picker {
+    display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px 0 11px;
+    background: var(--surface); border: 1px solid var(--border2); border-radius: 6px;
+    font-size: 12.5px; font-weight: 500; color: var(--text); margin-right: 8px;
+    cursor: pointer; position: relative; min-width: 118px; justify-content: space-between;
+    font-family: inherit;
+  }
+  .picker:hover { border-color: var(--border2-hover); }
+  .menu {
+    position: absolute; top: calc(100% + 5px); left: 0; min-width: 172px;
+    background: var(--menu-bg); border: 1px solid var(--border2); border-radius: 8px;
+    box-shadow: var(--menu-shadow); padding: 5px; display: none; z-index: 50;
+  }
+  .menu.open { display: block; }
+  .mitem {
+    display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 5px;
+    font-size: 12.5px; color: var(--text-body); cursor: pointer; white-space: nowrap;
+  }
+  .mitem:hover { background: var(--menu-hover); }
+  .mitem .mhint { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--fainter); }
+  .mitem.sel { color: var(--accent); font-weight: 600; }
+  .insertBtn { position: relative; gap: 6px; font-size: 12.5px; font-weight: 500; padding: 0 9px; }
+
+  .latexToggle, .themeToggle {
+    display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+    border: 1px solid var(--border2); background: transparent; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); cursor: pointer;
+  }
+  .latexToggle span { font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; }
+  .latexToggle:hover, .themeToggle:hover { border-color: var(--border2-hover); }
+  .latexToggle.on {
+    border-color: rgba(var(--accent-rgb), 0.4); background: rgba(var(--accent-rgb), 0.09);
+    color: var(--accent);
+  }
+  .latexToggle.on span { font-weight: 600; }
+  .themeToggle { width: 30px; padding: 0; justify-content: center; margin-right: 7px; }
+
+  /* ---------- Main ---------- */
+  .main { flex: 1; display: flex; overflow: hidden; }
+  .canvasWrap { flex: 1; overflow-y: auto; padding: 32px 24px 80px; }
+  .page {
+    max-width: 820px; margin: 0 auto; background: var(--surface);
+    border: 1px solid var(--page-border); border-radius: 6px;
+    box-shadow: var(--page-shadow);
+    padding: 52px 72px 60px; min-height: 900px;
+    transition: background 0.25s, border-color 0.25s;
+  }
+
+  /* ---------- Blocks ---------- */
+  .block { position: relative; border-left: 3px solid transparent; border-radius: 2px 4px 4px 2px;
+    padding: 8px 14px 8px 15px; margin: 0 -14px 0 -18px; transition: background 0.12s; }
+  .block:hover { background: var(--block-hover); }
+  .block.selected { border-left-color: var(--accent); background: rgba(var(--accent-rgb), 0.055); }
+  .block.dragging { opacity: 0.35; }
+
+  .handle {
+    position: absolute; left: -26px; top: 50%; transform: translateY(-50%);
+    width: 20px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; cursor: grab; opacity: 0; transition: opacity 0.12s;
+    color: var(--faint);
+  }
+  .handle:active { cursor: grabbing; }
+  .block:hover .handle { opacity: 0.55; }
+  .block.selected .handle { opacity: 1; background: rgba(var(--accent-rgb), 0.10); color: var(--accent); }
+
+  .btools {
+    position: absolute; top: -26px; right: 0; display: none; align-items: center; gap: 5px; z-index: 10;
+  }
+  .block.selected .btools { display: flex; }
+  .bchip {
+    height: 20px; padding: 0 8px; display: flex; align-items: center;
+    background: var(--accent); color: #FFF; font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.04em; border-radius: 4px;
+  }
+  .bico {
+    width: 20px; height: 20px; background: var(--menu-bg); border: 1px solid var(--border2); border-radius: 4px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+    color: var(--muted);
+  }
+  .bico:hover { border-color: var(--accent); color: var(--accent); }
+
+  .bbody { outline: none; font-family: Georgia, serif; color: var(--text-body); }
+  .bbody[contenteditable] { caret-color: var(--accent); }
+  .bbody ::selection, .bbody::selection { background: rgba(var(--accent-rgb), 0.25); }
+
+  [data-type="paragraph"] .bbody { font-size: 16.5px; line-height: 1.68; }
+  [data-type="section"] .bbody { font-size: 25px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; color: var(--text); }
+  [data-type="subsection"] .bbody { font-size: 20px; font-weight: 700; line-height: 1.35; color: var(--text); }
+  [data-type="subsubsection"] .bbody { font-size: 17px; font-weight: 700; line-height: 1.4; color: var(--text); }
+  .secnum { color: var(--accent); font-weight: 400; margin-right: 10px; }
+
+  .imath {
+    font-style: italic; background: rgba(var(--accent-rgb), 0.08); border-radius: 3px;
+    padding: 1px 4px; white-space: nowrap;
+  }
+
+  [data-type="equation"] .bbody { display: flex; align-items: center; padding: 6px 0; cursor: default; }
+  .eqbody { flex: 1; text-align: center; font-size: 19px; font-style: italic; color: var(--text); letter-spacing: 0.01em; }
+  .eqnum { width: 44px; text-align: right; font-size: 14px; color: var(--faint); }
+  .eqpad { width: 44px; }
+
+  [data-type="figure"] .bbody {
+    border: 1.5px dashed var(--fig-border); border-radius: 6px; padding: 26px 20px 20px;
+    text-align: center; background: var(--fig-bg); font-family: 'DM Sans', sans-serif; cursor: default;
+    color: var(--faint);
+  }
+  .figlabel { font-size: 13px; font-weight: 500; color: var(--muted); margin-top: 9px; }
+  .figlabel b { color: var(--accent); font-weight: 600; cursor: pointer; }
+  .figcap { font-family: Georgia, serif; font-size: 13.5px; font-style: italic; color: var(--faint); margin-top: 14px; outline: none; caret-color: var(--accent); }
+
+  [data-type="list"] .bbody { font-size: 16px; line-height: 1.62; }
+  .li { display: flex; gap: 13px; margin-bottom: 7px; }
+  .li:last-child { margin-bottom: 0; }
+  .li .dot { color: var(--accent); flex: none; }
+  .li span[contenteditable] { outline: none; flex: 1; caret-color: var(--accent); }
+
+  /* ---------- Insert lines ---------- */
+  .iline { height: 20px; display: flex; align-items: center; cursor: pointer; }
+  .iline .rule { flex: 1; height: 1px; background: transparent; transition: background 0.12s; }
+  .iline .plus {
+    width: 16px; height: 16px; margin: 0 6px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; transition: all 0.12s;
+    opacity: 0; background: var(--iline-plus-bg); color: var(--fainter);
+  }
+  .iline:hover .rule { background: var(--iline-hot); }
+  .iline:hover .plus { opacity: 1; background: var(--accent); color: #FFF; box-shadow: 0 1px 3px rgba(var(--accent-rgb), 0.4); }
+
+  .dropbar { position: fixed; height: 3px; background: var(--accent); border-radius: 2px; display: none; z-index: 60; pointer-events: none; }
+
+  /* ---------- LaTeX panel ---------- */
+  .panel {
+    width: 320px; flex: none; border-left: 1px solid var(--border); background: var(--code-bg);
+    display: flex; flex-direction: column; transition: margin-right 0.22s ease, background 0.25s;
+  }
+  .panel.hidden { margin-right: -320px; }
+  .phead {
+    height: 38px; flex: none; display: flex; align-items: center; gap: 7px;
+    padding: 0 12px; border-bottom: 1px solid var(--code-border); background: var(--code-bg);
+  }
+  .phead .braces { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+  .phead .ptitle { font-size: 12px; font-weight: 600; color: var(--text); }
+  .live {
+    display: flex; align-items: center; gap: 4px; height: 17px; padding: 0 6px;
+    background: rgba(var(--accent-rgb), 0.10); border-radius: 9px;
+    font-size: 10px; font-weight: 600; color: var(--accent); letter-spacing: 0.03em;
+  }
+  .live .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .pico { margin-left: auto; display: flex; gap: 9px; color: var(--faint); }
+  .pico svg { cursor: pointer; }
+  .pico svg:hover { color: var(--accent); }
+
+  .code {
+    flex: 1; overflow-y: auto; padding: 12px 0 24px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.8;
+  }
+  .cl { display: flex; }
+  .cl .ln {
+    flex: none; width: 34px; text-align: right; padding-right: 10px;
+    color: var(--ln); user-select: none; font-size: 10px; line-height: inherit; padding-top: 1px;
+  }
+  .cl .ct { flex: 1; padding-right: 12px; white-space: pre-wrap; word-break: break-word; color: var(--code-text); }
+  .cl.active { background: rgba(var(--accent-rgb), 0.09); }
+  .cl.active .ln { color: var(--accent); font-weight: 500; }
+  .tok-cmd { color: var(--tok-cmd); }
+  .tok-env { color: var(--tok-env); }
+  .tok-com { color: var(--tok-com); }
+  .tok-math { color: var(--tok-math); }
+
+  /* ---------- Status bar ---------- */
+  .status {
+    height: 34px; flex: none; display: flex; align-items: center; padding: 0 18px;
+    border-top: 1px solid var(--border); background: var(--bg);
+    font-size: 11.5px; color: var(--faint); transition: background 0.25s, border-color 0.25s;
+  }
+  .status .strong { font-weight: 500; color: var(--muted); }
+  .status .dotSep { margin: 0 7px; }
+  .status .bar { margin: 0 12px; color: var(--border2); }
+  .saved { display: flex; align-items: center; gap: 5px; }
+  .saved .sdot { width: 6px; height: 6px; border-radius: 50%; background: var(--saved); }
+  .saved.saving .sdot { background: var(--saving); }
+  .hint { margin-left: auto; }
+
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 5px; border: 2px solid var(--bg); }
+  .code::-webkit-scrollbar-thumb { border-color: var(--code-bg); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="picker" id="stylePicker">
+      <span id="styleLabel">Paragraph</span>
+      <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/></svg>
+      <div class="menu" id="styleMenu">
+        <div class="mitem" data-style="paragraph">Paragraph <span class="mhint">text</span></div>
+        <div class="mitem" data-style="section">Section <span class="mhint">\section</span></div>
+        <div class="mitem" data-style="subsection">Subsection <span class="mhint">\subsection</span></div>
+        <div class="mitem" data-style="subsubsection">Subsubsection <span class="mhint">\subsubsection</span></div>
+      </div>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn serifB" data-cmd="bold" title="Bold (Ctrl+B)">B</button>
+    <button class="tbtn serifI" data-cmd="italic" title="Italic (Ctrl+I)">I</button>
+    <button class="tbtn serifU" data-cmd="underline" title="Underline (Ctrl+U)">U</button>
+    <div class="tsep"></div>
+    <button class="tbtn" title="Bullet list">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="2.4" cy="3.5" r="1.2" fill="currentColor"/><circle cx="2.4" cy="8" r="1.2" fill="currentColor"/><circle cx="2.4" cy="12.5" r="1.2" fill="currentColor"/><path d="M6 3.5H14M6 8H14M6 12.5H14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button class="tbtn" title="Numbered list">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><text x="0" y="5.4" font-family="'DM Sans',sans-serif" font-size="5.4" font-weight="600" fill="currentColor">1.</text><text x="0" y="10.6" font-family="'DM Sans',sans-serif" font-size="5.4" font-weight="600" fill="currentColor">2.</text><text x="0" y="15.6" font-family="'DM Sans',sans-serif" font-size="5.4" font-weight="600" fill="currentColor">3.</text><path d="M7 3.5H14M7 8.6H14M7 13.6H14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn fx" id="mathBtn" title="Inline math — select text, then click">ƒx</button>
+    <button class="tbtn" title="Link">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5L9.5 6.5M7 4.5L8.2 3.3C9.4 2.1 11.3 2.1 12.5 3.3C13.7 4.5 13.7 6.4 12.5 7.6L11.3 8.8M9 11.5L7.8 12.7C6.6 13.9 4.7 13.9 3.5 12.7C2.3 11.5 2.3 9.6 3.5 8.4L4.7 7.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn" title="Outdent">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 3H14M8 6.7H14M8 10H14M2 13.4H14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 6.3L2.6 8.3L5 10.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="tbtn" title="Indent">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 3H14M8 6.7H14M8 10H14M2 13.4H14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.6 6.3L5 8.3L2.6 10.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn insertBtn" id="insertBtn">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1.5V10.5M1.5 6H10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Insert
+      <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/></svg>
+      <div class="menu" id="insertMenu" style="left:auto; right:0;">
+        <div class="mitem" data-ins="paragraph">Paragraph <span class="mhint">text</span></div>
+        <div class="mitem" data-ins="section">Section heading <span class="mhint">\section</span></div>
+        <div class="mitem" data-ins="equation">Equation <span class="mhint">equation</span></div>
+        <div class="mitem" data-ins="figure">Figure <span class="mhint">figure</span></div>
+        <div class="mitem" data-ins="list">Bullet list <span class="mhint">itemize</span></div>
+      </div>
+    </button>
+    <div style="flex:1;"></div>
+    <button class="themeToggle" id="themeToggle" title="Toggle dark mode">
+      <svg id="moonIcon" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13.5 9.5C12.6 9.9 11.6 10.1 10.5 10.1C6.9 10.1 4 7.2 4 3.6C4 3 4.1 2.4 4.2 1.9C2.3 3 1 5.1 1 7.5C1 11.1 3.9 14 7.5 14C10.2 14 12.5 12.1 13.5 9.5Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg id="sunIcon" width="14" height="14" viewBox="0 0 16 16" fill="none" style="display:none;"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M8 1V2.5M8 13.5V15M15 8H13.5M2.5 8H1M12.9 3.1L11.9 4.1M4.1 11.9L3.1 12.9M12.9 12.9L11.9 11.9M4.1 4.1L3.1 3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button class="latexToggle on" id="latexToggle">{ } <span>LaTeX</span></button>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="canvasWrap" id="canvasWrap">
+      <div class="page" id="page"></div>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="phead">
+        <span class="braces">{ }</span>
+        <span class="ptitle">introduction.tex</span>
+        <span class="live"><span class="dot"></span>LIVE</span>
+        <span class="pico">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="6.5" height="6.5" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 8H2C1.4 8 1 7.6 1 7V2C1 1.4 1.4 1 2 1H7C7.6 1 8 1.4 8 2V2.5" stroke="currentColor" stroke-width="1.2"/></svg>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" id="collapseBtn"><path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </div>
+      <div class="code" id="code"></div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status">
+    <span class="strong" id="blockCount">0 blocks</span><span class="dotSep">·</span><span id="wordCount">0 words</span>
+    <span class="bar">|</span>
+    <span class="saved" id="saved"><span class="sdot"></span><span id="savedLabel">Saved</span></span>
+    <span class="hint">Click a block to select&ensp;·&ensp;Drag handle to reorder&ensp;·&ensp;Hover between blocks to insert</span>
+  </div>
+</div>
+
+<div class="dropbar" id="dropbar"></div>
+
+<script>
+(function () {
+  var page = document.getElementById('page');
+  var codeEl = document.getElementById('code');
+  var dropbar = document.getElementById('dropbar');
+  var uid = 0;
+
+  /* ---------------- Theme toggle ---------------- */
+  var root = document.documentElement;
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var dark = root.dataset.theme === 'dark';
+    root.dataset.theme = dark ? 'light' : 'dark';
+    document.getElementById('moonIcon').style.display = dark ? '' : 'none';
+    document.getElementById('sunIcon').style.display = dark ? 'none' : '';
+  });
+
+  /* ---------------- Block factory ---------------- */
+  function el(html) {
+    var t = document.createElement('template');
+    t.innerHTML = html.trim();
+    return t.content.firstChild;
+  }
+
+  function toolsHTML(label) {
+    return '<div class="btools">' +
+      '<div class="bchip">' + label.toUpperCase() + '</div>' +
+      '<button class="bico" data-act="dup" title="Duplicate">' +
+        '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="6.5" height="6.5" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 8H2C1.4 8 1 7.6 1 7V2C1 1.4 1.4 1 2 1H7C7.6 1 8 1.4 8 2V2.5" stroke="currentColor" stroke-width="1.2"/></svg></button>' +
+      '<button class="bico" data-act="del" title="Delete">' +
+        '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 3H10.5M4.5 3V1.8C4.5 1.4 4.9 1 5.3 1H6.7C7.1 1 7.5 1.4 7.5 1.8V3M2.5 3L3 10.2C3 10.6 3.4 11 3.8 11H8.2C8.6 11 9 10.6 9 10.2L9.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>' +
+      '</div>';
+  }
+
+  var handleHTML = '<div class="handle" title="Drag to reorder">' +
+    '<svg width="9" height="15" viewBox="0 0 10 16" fill="none">' +
+    '<circle cx="3" cy="3" r="1.25" fill="currentColor"/><circle cx="7" cy="3" r="1.25" fill="currentColor"/>' +
+    '<circle cx="3" cy="8" r="1.25" fill="currentColor"/><circle cx="7" cy="8" r="1.25" fill="currentColor"/>' +
+    '<circle cx="3" cy="13" r="1.25" fill="currentColor"/><circle cx="7" cy="13" r="1.25" fill="currentColor"/></svg></div>';
+
+  var LABELS = { paragraph:'Paragraph', section:'Section', subsection:'Subsection',
+                 subsubsection:'Subsubsection', equation:'Equation', figure:'Figure', list:'Bullet list' };
+
+  function makeBlock(type, opts) {
+    opts = opts || {};
+    var b = document.createElement('div');
+    b.className = 'block';
+    b.dataset.type = type;
+    b.dataset.id = 'b' + (++uid);
+    b.innerHTML = toolsHTML(LABELS[type]) + handleHTML;
+
+    var body = document.createElement('div');
+    body.className = 'bbody';
+
+    if (type === 'paragraph' || type === 'section' || type === 'subsection' || type === 'subsubsection') {
+      body.setAttribute('contenteditable', 'true');
+      body.setAttribute('spellcheck', 'false');
+      body.innerHTML = opts.html || 'New paragraph — start typing…';
+    } else if (type === 'equation') {
+      body.innerHTML = '<div class="eqpad"></div><div class="eqbody">' + (opts.eq || '|ψ⟩ = α|0⟩ + β|1⟩,&emsp;|α|² + |β|² = 1') + '</div><div class="eqnum">(2.1)</div>';
+      b.dataset.latex = opts.latex || '\\ket{\\psi} = \\alpha\\ket{0} + \\beta\\ket{1}, \\quad |\\alpha|^2 + |\\beta|^2 = 1';
+    } else if (type === 'figure') {
+      body.innerHTML =
+        '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="opacity:0.6;"><rect x="2.5" y="3.5" width="19" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9" r="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M4 17.5L9.5 12.5L13 15.5L16.5 12L21 16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '<div class="figlabel">Drop an image or <b>browse files</b></div>' +
+        '<div class="figcap" contenteditable="true" spellcheck="false">' + (opts.cap || 'Figure 2.1 — Bloch sphere representation of a single qubit') + '</div>';
+    } else if (type === 'list') {
+      var items = opts.items || ['New item'];
+      body.innerHTML = items.map(function (t) {
+        return '<div class="li"><span class="dot">•</span><span contenteditable="true" spellcheck="false">' + t + '</span></div>';
+      }).join('');
+    }
+    b.appendChild(body);
+    return b;
+  }
+
+  /* ---------------- Seed document ---------------- */
+  var seed = [
+    makeBlock('section', { html: '<span class="secnum" contenteditable="false">2.3</span>Representing Qubit States' }),
+    makeBlock('paragraph', { html: 'The state of a single qubit is a vector in a two-dimensional complex Hilbert space. Unlike a classical bit, which must be either 0 or 1, a qubit may occupy a superposition of both basis states — written <span class="imath">α|0⟩ + β|1⟩</span> — where the amplitudes encode the probabilities of each measurement outcome.' }),
+    makeBlock('paragraph', { html: 'Measurement collapses this superposition: the outcome |0⟩ occurs with probability <span class="imath">|α|²</span>, and the amplitudes must satisfy the normalization condition below.' }),
+    makeBlock('equation', {}),
+    makeBlock('figure', {}),
+    makeBlock('list', { items: [
+      'The amplitudes <span class="imath">α, β ∈ ℂ</span> define a point on the Bloch sphere',
+      'Global phase carries no physical meaning and can be discarded',
+      'Measurement in the computational basis yields a classical bit'
+    ]})
+  ];
+  seed.forEach(function (b) { page.appendChild(b); });
+
+  /* ---------------- Insert lines ---------------- */
+  function ilineEl() {
+    var i = el('<div class="iline" title="Insert paragraph here">' +
+      '<div class="rule"></div>' +
+      '<div class="plus"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 1V7M1 4H7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></div>' +
+      '<div class="rule"></div></div>');
+    i.addEventListener('click', function () {
+      var nb = makeBlock('paragraph', {});
+      page.insertBefore(nb, i.nextSibling);
+      rebuildIlines(); selectBlock(nb); focusBody(nb); sync();
+    });
+    return i;
+  }
+  function rebuildIlines() {
+    page.querySelectorAll('.iline').forEach(function (n) { n.remove(); });
+    var blocks = page.querySelectorAll('.block');
+    blocks.forEach(function (b, idx) {
+      if (idx < blocks.length - 1) page.insertBefore(ilineEl(), b.nextSibling);
+    });
+    if (blocks.length) page.appendChild(ilineEl());
+  }
+
+  /* ---------------- Selection ---------------- */
+  var selected = null;
+  function selectBlock(b) {
+    if (selected) selected.classList.remove('selected');
+    selected = b;
+    if (b) {
+      b.classList.add('selected');
+      var t = b.dataset.type;
+      document.getElementById('styleLabel').textContent = LABELS[t] || 'Paragraph';
+    }
+    highlightPanel();
+  }
+  function focusBody(b) {
+    var ed = b.querySelector('[contenteditable="true"]');
+    if (ed) {
+      ed.focus();
+      var r = document.createRange(); r.selectNodeContents(ed); r.collapse(false);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    }
+  }
+  page.addEventListener('mousedown', function (e) {
+    var b = e.target.closest('.block');
+    if (b) selectBlock(b);
+  });
+
+  /* ---------------- Block actions ---------------- */
+  page.addEventListener('click', function (e) {
+    var act = e.target.closest('[data-act]');
+    if (!act) return;
+    var b = act.closest('.block');
+    if (act.dataset.act === 'del') {
+      var next = b.nextElementSibling && b.nextElementSibling.nextElementSibling;
+      b.remove(); rebuildIlines();
+      selectBlock(next && next.classList.contains('block') ? next : page.querySelector('.block'));
+      sync();
+    } else if (act.dataset.act === 'dup') {
+      var clone = b.cloneNode(true);
+      clone.dataset.id = 'b' + (++uid);
+      clone.classList.remove('selected');
+      page.insertBefore(clone, b.nextSibling);
+      rebuildIlines(); selectBlock(clone); sync();
+    }
+  });
+
+  /* ---------------- Toolbar ---------------- */
+  function closeMenus() {
+    document.querySelectorAll('.menu.open').forEach(function (m) { m.classList.remove('open'); });
+  }
+  document.addEventListener('mousedown', function (e) {
+    if (!e.target.closest('.picker') && !e.target.closest('.insertBtn')) closeMenus();
+  });
+
+  document.getElementById('stylePicker').addEventListener('mousedown', function (e) {
+    if (e.target.closest('.mitem')) return;
+    e.preventDefault();
+    var m = document.getElementById('styleMenu');
+    var open = m.classList.contains('open'); closeMenus();
+    if (!open) {
+      m.querySelectorAll('.mitem').forEach(function (it) {
+        it.classList.toggle('sel', selected && it.dataset.style === selected.dataset.type);
+      });
+      m.classList.add('open');
+    }
+  });
+  document.getElementById('styleMenu').addEventListener('mousedown', function (e) {
+    var it = e.target.closest('.mitem'); if (!it) return;
+    e.preventDefault(); e.stopPropagation(); closeMenus();
+    if (!selected) return;
+    var t = selected.dataset.type;
+    var textTypes = ['paragraph','section','subsection','subsubsection'];
+    if (textTypes.indexOf(t) === -1) return;
+    selected.dataset.type = it.dataset.style;
+    selected.querySelector('.bchip').textContent = LABELS[it.dataset.style].toUpperCase();
+    document.getElementById('styleLabel').textContent = LABELS[it.dataset.style];
+    sync();
+  });
+
+  document.getElementById('insertBtn').addEventListener('mousedown', function (e) {
+    if (e.target.closest('.mitem')) return;
+    e.preventDefault();
+    var m = document.getElementById('insertMenu');
+    var open = m.classList.contains('open'); closeMenus();
+    if (!open) m.classList.add('open');
+  });
+  document.getElementById('insertMenu').addEventListener('mousedown', function (e) {
+    var it = e.target.closest('.mitem'); if (!it) return;
+    e.preventDefault(); e.stopPropagation(); closeMenus();
+    var nb = makeBlock(it.dataset.ins, {});
+    if (selected && selected.parentNode === page) page.insertBefore(nb, selected.nextSibling);
+    else page.appendChild(nb);
+    rebuildIlines(); selectBlock(nb); focusBody(nb); sync();
+  });
+
+  document.querySelectorAll('.tbtn[data-cmd]').forEach(function (btn) {
+    btn.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      document.execCommand(btn.dataset.cmd, false, null);
+      refreshToggles(); sync();
+    });
+  });
+  function refreshToggles() {
+    ['bold','italic','underline'].forEach(function (c) {
+      var btn = document.querySelector('.tbtn[data-cmd="' + c + '"]');
+      var on = false;
+      try { on = document.queryCommandState(c); } catch (err) {}
+      btn.classList.toggle('on', on);
+    });
+  }
+  document.addEventListener('selectionchange', refreshToggles);
+
+  document.getElementById('mathBtn').addEventListener('mousedown', function (e) {
+    e.preventDefault();
+    var s = window.getSelection();
+    if (!s.rangeCount || s.isCollapsed) return;
+    var range = s.getRangeAt(0);
+    if (!range.commonAncestorContainer.parentElement.closest('.bbody')) return;
+    var span = document.createElement('span');
+    span.className = 'imath';
+    try { range.surroundContents(span); } catch (err) { return; }
+    s.removeAllRanges(); sync();
+  });
+
+  var panel = document.getElementById('panel');
+  var latexToggle = document.getElementById('latexToggle');
+  function togglePanel() {
+    panel.classList.toggle('hidden');
+    latexToggle.classList.toggle('on', !panel.classList.contains('hidden'));
+  }
+  latexToggle.addEventListener('click', togglePanel);
+  document.getElementById('collapseBtn').addEventListener('click', togglePanel);
+
+  /* ---------------- Drag to reorder ---------------- */
+  var dragged = null;
+  page.addEventListener('mousedown', function (e) {
+    var h = e.target.closest('.handle');
+    if (h) h.closest('.block').setAttribute('draggable', 'true');
+  });
+  page.addEventListener('dragstart', function (e) {
+    dragged = e.target.closest('.block');
+    if (dragged) { dragged.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; }
+  });
+  page.addEventListener('dragend', function () {
+    if (dragged) { dragged.classList.remove('dragging'); dragged.removeAttribute('draggable'); }
+    dragged = null; dropbar.style.display = 'none';
+  });
+  page.addEventListener('dragover', function (e) {
+    if (!dragged) return;
+    e.preventDefault();
+    var over = e.target.closest('.block');
+    if (!over || over === dragged) { return; }
+    var r = over.getBoundingClientRect();
+    var before = e.clientY < r.top + r.height / 2;
+    dropbar.style.display = 'block';
+    dropbar.style.left = r.left + 'px';
+    dropbar.style.width = r.width + 'px';
+    dropbar.style.top = (before ? r.top - 2 : r.bottom - 1) + 'px';
+    dropbar.dataset.targetId = over.dataset.id;
+    dropbar.dataset.before = before ? '1' : '0';
+  });
+  page.addEventListener('drop', function (e) {
+    if (!dragged) return;
+    e.preventDefault();
+    var target = page.querySelector('.block[data-id="' + dropbar.dataset.targetId + '"]');
+    if (target) {
+      if (dropbar.dataset.before === '1') page.insertBefore(dragged, target);
+      else page.insertBefore(dragged, target.nextSibling);
+      rebuildIlines(); selectBlock(dragged); sync();
+    }
+    dropbar.style.display = 'none';
+  });
+
+  /* ---------------- HTML → LaTeX ---------------- */
+  function u2tex(s) {
+    return s
+      .replace(/\|([^⟩|]{1,12})⟩/g, '\\ket{$1}')
+      .replace(/α/g, '\\alpha').replace(/β/g, '\\beta').replace(/ψ/g, '\\psi')
+      .replace(/²/g, '^2').replace(/∈/g, ' \\in ').replace(/ℂ/g, '\\mathbb{C}')
+      .replace(/\u2003/g, ' \\quad ').replace(/\s+/g, ' ').trim();
+  }
+  function nodeToTex(node) {
+    var out = '';
+    node.childNodes.forEach(function (n) {
+      if (n.nodeType === 3) { out += n.textContent; return; }
+      if (n.nodeType !== 1) return;
+      var tag = n.tagName;
+      if (n.classList.contains('imath')) out += '$' + u2tex(n.textContent) + '$';
+      else if (n.classList.contains('secnum')) return;
+      else if (tag === 'B' || tag === 'STRONG') out += '\\textbf{' + nodeToTex(n) + '}';
+      else if (tag === 'I' || tag === 'EM') out += '\\textit{' + nodeToTex(n) + '}';
+      else if (tag === 'U') out += '\\underline{' + nodeToTex(n) + '}';
+      else if (tag === 'BR') out += ' ';
+      else out += nodeToTex(n);
+    });
+    return out;
+  }
+  function slug(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'x';
+  }
+
+  /* ---------------- Generate + highlight code ---------------- */
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function hi(line) {
+    var e = esc(line);
+    if (/^\s*%/.test(e)) return '<span class="tok-com">' + e + '</span>';
+    e = e.replace(/\$[^$]*\$/g, function (m) { return '\u0001' + m + '\u0002'; });
+    var parts = e.split(/(\u0001[^\u0002]*\u0002)/);
+    var out = parts.map(function (p) {
+      if (p.charCodeAt(0) === 1) return '<span class="tok-math">' + p.slice(1, -1) + '</span>';
+      p = p.replace(/(\\begin|\\end)\{([a-zA-Z*]+)\}/g, '<span class="tok-cmd">$1</span>{<span class="tok-env">$2</span>}');
+      p = p.replace(/\\[a-zA-Z@]+/g, function (m) { return '<span class="tok-cmd">' + m + '</span>'; });
+      return p;
+    }).join('');
+    return out;
+  }
+
+  function generate() {
+    var lines = [];
+    function push(text, id) { lines.push({ text: text, blockId: id || null }); }
+
+    push('\\documentclass[12pt]{article}');
+    push('\\usepackage{amsmath}');
+    push('\\usepackage{braket}');
+    push('\\usepackage{graphicx}');
+    push('\\usepackage[hidelinks]{hyperref}');
+    push('');
+    push('% Document metadata');
+    push('\\title{Quantum Coherence in Neural Systems}');
+    push('\\author{Dr.~Jane Smith}');
+    push('\\date{\\today}');
+    push('');
+    push('\\begin{document}');
+    push('\\maketitle');
+    push('');
+
+    page.querySelectorAll('.block').forEach(function (b) {
+      var id = b.dataset.id, t = b.dataset.type;
+      var body = b.querySelector('.bbody');
+      if (t === 'section' || t === 'subsection' || t === 'subsubsection') {
+        var txt = nodeToTex(body).trim();
+        push('\\' + t + '{' + txt + '}', id);
+        push('\\label{sec:' + slug(txt) + '}', id);
+      } else if (t === 'paragraph') {
+        push(nodeToTex(body).trim(), id);
+      } else if (t === 'equation') {
+        push('\\begin{equation}', id);
+        push('  ' + (b.dataset.latex || ''), id);
+        push('  \\label{eq:normalization}', id);
+        push('\\end{equation}', id);
+      } else if (t === 'figure') {
+        var cap = b.querySelector('.figcap');
+        push('\\begin{figure}[h]', id);
+        push('  \\centering', id);
+        push('  % awaiting image upload', id);
+        push('  \\caption{' + (cap ? nodeToTex(cap).replace(/^Figure[^—-]*[—-]\s*/, '').trim() : '') + '}', id);
+        push('\\end{figure}', id);
+      } else if (t === 'list') {
+        push('\\begin{itemize}', id);
+        b.querySelectorAll('.li span[contenteditable]').forEach(function (li) {
+          push('  \\item ' + nodeToTex(li).trim(), id);
+        });
+        push('\\end{itemize}', id);
+      }
+      push('');
+    });
+    push('\\end{document}');
+
+    codeEl.innerHTML = lines.map(function (l, i) {
+      return '<div class="cl" data-block="' + (l.blockId || '') + '">' +
+        '<span class="ln">' + (i + 1) + '</span>' +
+        '<span class="ct">' + (l.text ? hi(l.text) : '&nbsp;') + '</span></div>';
+    }).join('');
+    highlightPanel();
+  }
+
+  function highlightPanel() {
+    var id = selected ? selected.dataset.id : '';
+    var first = null;
+    codeEl.querySelectorAll('.cl').forEach(function (cl) {
+      var on = id && cl.dataset.block === id;
+      cl.classList.toggle('active', on);
+      if (on && !first) first = cl;
+    });
+    if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  /* ---------------- Counters + saved state ---------------- */
+  var saveTimer = null;
+  function counters() {
+    var blocks = page.querySelectorAll('.block').length;
+    var words = (page.innerText.match(/\S+/g) || []).length;
+    document.getElementById('blockCount').textContent = blocks + ' block' + (blocks === 1 ? '' : 's');
+    document.getElementById('wordCount').textContent = words + ' words';
+  }
+  function savedFlash() {
+    var s = document.getElementById('saved'), l = document.getElementById('savedLabel');
+    s.classList.add('saving'); l.textContent = 'Saving…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { s.classList.remove('saving'); l.textContent = 'Saved'; }, 700);
+  }
+  function sync() { generate(); counters(); savedFlash(); }
+
+  var inputTimer = null;
+  page.addEventListener('input', function () {
+    clearTimeout(inputTimer);
+    inputTimer = setTimeout(sync, 200);
+  });
+
+  /* ---------------- Boot ---------------- */
+  rebuildIlines();
+  selectBlock(page.querySelectorAll('.block')[2]);
+  generate(); counters();
+})();
+</script>
+</body>
+</html>

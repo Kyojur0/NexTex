@@ -21,7 +21,15 @@ import main as main_module
 main_module.CONFIG_PATH = TEST_CONFIG_PATH
 main_module.DEFAULT_ROOT = TEST_DEFAULT_ROOT.resolve()
 
-from main import app, _resolve_safe, _is_path_inside, _get_active_workspace
+from main import (
+    app,
+    _resolve_safe,
+    _is_path_inside,
+    _get_active_workspace,
+    _parse_compile_logs,
+    _detect_missing_packages,
+    _preprocess_latex_content,
+)
 
 client = TestClient(app)
 
@@ -267,6 +275,8 @@ class TestCompile:
             assert "build_id" in data
             assert "success" in data
             assert "logs" in data
+            assert "error_lines" in data
+            assert isinstance(data["error_lines"], list)
             assert "pdf_available" in data
             assert "pdf_url" in data
         else:
@@ -284,6 +294,88 @@ class TestCompile:
 
 
 # ---------------------------------------------------------------------------
+# Log parser tests
+# ---------------------------------------------------------------------------
+
+class TestLogParser:
+    def test_parse_error_with_line_reference(self):
+        stdout = """! Undefined control sequence.
+l.15 \\usepacakge
+                {geometry}"""
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 1
+        assert logs[0]["type"] == "error"
+        assert len(error_lines) == 1
+        assert error_lines[0]["line"] == 15
+        assert error_lines[0]["severity"] == "error"
+        assert "Undefined control sequence" in error_lines[0]["message"]
+        assert "\\usepacakge" in error_lines[0]["context"]
+
+    def test_parse_multiple_errors(self):
+        stdout = """! LaTeX Error: Missing \\begin{document}.
+
+l.5 This is a test
+      
+! Undefined control sequence.
+l.20 \\badcmd
+            {arg}"""
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 2
+        assert len(error_lines) == 2
+        assert error_lines[0]["line"] == 5
+        assert error_lines[1]["line"] == 20
+
+    def test_parse_warning_with_inline_line(self):
+        stdout = "LaTeX Warning: Reference `fig:1' on page 1 undefined on input line 23."
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 1
+        assert logs[0]["type"] == "warning"
+        assert len(error_lines) == 1
+        assert error_lines[0]["line"] == 23
+        assert error_lines[0]["severity"] == "warning"
+
+    def test_parse_warning_with_line_keyword(self):
+        stdout = "Package hyperref Warning: Token not allowed in a PDF string on input line 42."
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 1
+        assert logs[0]["type"] == "warning"
+        assert len(error_lines) == 1
+        assert error_lines[0]["line"] == 42
+
+    def test_parse_success_output(self):
+        stdout = "Output written on test.pdf (1 page, 12345 bytes)."
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 1
+        assert logs[0]["type"] == "success"
+        assert len(error_lines) == 0
+
+    def test_parse_no_errors(self):
+        stdout = "This is random output\nwith no matching patterns"
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 0
+        assert len(error_lines) == 0
+
+    def test_parse_error_with_inserted_text_context(self):
+        """pdflatex often inserts <inserted text> between ! and l.N — we must scan past it."""
+        stdout = """! Missing $ inserted.
+<inserted text> 
+                $
+l.22 \\textbf{Hello}
+                    World"""
+        logs, error_lines = _parse_compile_logs(stdout, "")
+        assert len(logs) == 1
+        assert logs[0]["type"] == "error"
+        assert len(error_lines) == 1
+        assert error_lines[0]["line"] == 22
+        assert "Missing $ inserted" in error_lines[0]["message"]
+
+    def test_stderr_included(self):
+        stderr = "! Emergency stop."
+        logs, error_lines = _parse_compile_logs("", stderr)
+        assert len(logs) == 1
+        assert logs[0]["type"] == "error"
+
+# ---------------------------------------------------------------------------
 # Config / health tests
 # ---------------------------------------------------------------------------
 
@@ -297,3 +389,66 @@ class TestConfig:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "NexTex" in resp.json()["message"]
+
+
+class TestLatexPreprocessing:
+    def test_detect_missing_packages_for_visual_editor_blocks(self):
+        content = (
+            "\\begin{equation}\nE=mc^2\n\\end{equation}\n"
+            "\\includegraphics{img.png}\n"
+            "\\begin{lstlisting}\nprint('hi')\n\\end{lstlisting}\n"
+            "\\begin{tabular}{ll}\na & b\\end{tabular}\n"
+        )
+        missing = _detect_missing_packages(content)
+        assert "amsmath" in missing
+        assert "graphicx" in missing
+        assert "listings" in missing
+        assert "array" in missing
+
+    def test_detect_missing_packages_skips_already_loaded(self):
+        content = (
+            "\\documentclass{article}\n"
+            "\\usepackage{amsmath}\n"
+            "\\begin{document}\n"
+            "\\begin{equation}\nE=mc^2\n\\end{equation}\n"
+            "\\end{document}\n"
+        )
+        missing = _detect_missing_packages(content)
+        assert "amsmath" not in missing
+
+    def test_preprocess_wraps_content_without_documentclass(self):
+        content = "\\section{Hello}\n\\begin{lstlisting}\nhi\n\\end{lstlisting}"
+        processed = _preprocess_latex_content(content)
+        assert "\\documentclass" in processed
+        assert "\\begin{document}" in processed
+        assert "\\end{document}" in processed
+        assert "\\usepackage{listings}" in processed
+        assert content in processed
+
+    def test_preprocess_injects_missing_packages_into_full_document(self):
+        content = (
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "\\begin{equation}\nx\\end{equation}\n"
+            "\\begin{lstlisting}\ny\\end{lstlisting}\n"
+            "\\end{document}\n"
+        )
+        processed = _preprocess_latex_content(content)
+        assert "\\usepackage{amsmath}" in processed
+        assert "\\usepackage{listings}" in processed
+        # Packages should appear after \documentclass and before \begin{document}
+        doc_class_pos = processed.find("\\documentclass")
+        amsmath_pos = processed.find("\\usepackage{amsmath}")
+        bdoc_pos = processed.find("\\begin{document}")
+        assert doc_class_pos < amsmath_pos < bdoc_pos
+
+    def test_preprocess_does_not_duplicate_packages(self):
+        content = (
+            "\\documentclass{article}\n"
+            "\\usepackage{listings}\n"
+            "\\begin{document}\n"
+            "\\begin{lstlisting}\nhi\\end{lstlisting}\n"
+            "\\end{document}\n"
+        )
+        processed = _preprocess_latex_content(content)
+        assert processed.count("\\usepackage{listings}") == 1

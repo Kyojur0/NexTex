@@ -74,8 +74,10 @@ interface EditorStore {
   showPreview: boolean
   showHistory: boolean
   showAISpotlight: boolean
+  showVisualLatexPanel: boolean
   sidebarWidth: number
   isDragging: boolean
+  activeEditorTab: 'text' | 'visual'
 
   // Settings
   settings: EditorSettings
@@ -87,6 +89,7 @@ interface EditorStore {
     line?: number
     timestamp: string
   }>
+  errorLines: Array<{ line: number; message: string; context: string; severity: string }>
   pdfUrl: string | null
 
   // Recent Files
@@ -103,10 +106,13 @@ interface EditorStore {
   setShowPreview: (value: boolean) => void
   setShowHistory: (value: boolean) => void
   setShowAISpotlight: (value: boolean) => void
+  setShowVisualLatexPanel: (value: boolean) => void
   setSidebarWidth: (width: number) => void
   setIsDragging: (value: boolean) => void
+  setActiveEditorTab: (tab: 'text' | 'visual') => void
   setSettings: (settings: Partial<EditorSettings>) => void
   setBuildLogs: (logs: EditorStore['buildLogs']) => void
+  setErrorLines: (lines: EditorStore['errorLines']) => void
   setPdfUrl: (url: string | null) => void
   setFiles: (files: FileItem[]) => void
   setProjectName: (name: string) => void
@@ -147,9 +153,12 @@ export const useEditorStore = create<EditorStore>()(
       showPreview: true,
       showHistory: false,
       showAISpotlight: false,
+      showVisualLatexPanel: true,
       sidebarWidth: 240,
       isDragging: false,
+      activeEditorTab: 'text',
       buildLogs: [],
+      errorLines: [],
       pdfUrl: null,
       recentFiles: [],
       settings: {
@@ -165,7 +174,7 @@ export const useEditorStore = create<EditorStore>()(
         aiProvider: 'openai',
       },
 
-      setContent: (content) => set({ content }),
+      setContent: (content) => set({ content, errorLines: [] }),
       setIsModified: (value) => set({ isModified: value }),
       setActiveFile: (id, content) => set({ activeFileId: id, content, isModified: false }),
       setIsBuilding: (value) => set({ isBuilding: value }),
@@ -176,13 +185,16 @@ export const useEditorStore = create<EditorStore>()(
       setShowPreview: (value) => set({ showPreview: value }),
       setShowHistory: (value) => set({ showHistory: value }),
       setShowAISpotlight: (value) => set({ showAISpotlight: value }),
+      setShowVisualLatexPanel: (value) => set({ showVisualLatexPanel: value }),
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       setIsDragging: (value) => set({ isDragging: value }),
+      setActiveEditorTab: (tab) => set({ activeEditorTab: tab }),
       setSettings: (newSettings) =>
         set((state) => ({
           settings: { ...state.settings, ...newSettings },
         })),
       setBuildLogs: (logs) => set({ buildLogs: logs }),
+      setErrorLines: (lines) => set({ errorLines: lines }),
       setPdfUrl: (url) => set({ pdfUrl: url }),
       setFiles: (files) => set({ files }),
       setProjectName: (name) => set({ projectName: name }),
@@ -291,7 +303,7 @@ export const useEditorStore = create<EditorStore>()(
       compileActiveFile: async () => {
         const { activeFilePath, settings } = get()
         if (!activeFilePath) return
-        set({ isBuilding: true, showBuildLog: true, pdfUrl: null })
+        set({ isBuilding: true, showBuildLog: true, pdfUrl: null, errorLines: [] })
         const ts = new Date().toLocaleTimeString()
         set({
           buildLogs: [
@@ -308,6 +320,7 @@ export const useEditorStore = create<EditorStore>()(
           }))
           set({
             buildLogs: logs,
+            errorLines: result.error_lines || [],
             pdfUrl: result.pdf_available ? api.getPdfUrl(result.build_id) : null,
           })
         } catch (err: any) {
@@ -316,6 +329,7 @@ export const useEditorStore = create<EditorStore>()(
               ...get().buildLogs,
               { type: 'error', message: err?.message || 'Compilation failed', timestamp: new Date().toLocaleTimeString() },
             ],
+            errorLines: [],
           })
         } finally {
           set({ isBuilding: false })

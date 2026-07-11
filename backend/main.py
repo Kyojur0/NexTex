@@ -5,6 +5,7 @@ Production-grade local filesystem + LaTeX compilation backend.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -160,6 +161,80 @@ def _cleanup_old_builds() -> None:
             shutil.rmtree(old)
         except OSError:
             pass
+
+
+def _parse_compile_logs(stdout: str, stderr: str) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    """Parse pdflatex stdout/stderr into log entries and error line references.
+
+    pdflatex error format:
+        ! LaTeX Error: ...
+        l.15 \somecommand
+                   {argument}
+
+    Warning format (inline line number):
+        LaTeX Warning: ... on input line 23.
+    """
+    log_lines = stdout.splitlines() if stdout else []
+    stderr_lines = stderr.splitlines() if stderr else []
+    all_lines = log_lines + stderr_lines
+
+    parsed_logs: list[dict[str, str]] = []
+    error_lines: list[dict[str, Any]] = []
+
+    i = 0
+    while i < len(all_lines):
+        line = all_lines[i]
+
+        # Error lines start with "!"
+        if line.startswith("!"):
+            parsed_logs.append({"type": "error", "message": line})
+            # Look ahead up to 6 lines for l.NNN reference.
+            # pdflatex often inserts <inserted text>, <to be read again>, etc.
+            # between the ! error and the l.N line.
+            lookahead = i + 1
+            consumed = 0
+            while lookahead < len(all_lines) and consumed < 6:
+                next_line = all_lines[lookahead]
+                if not next_line.strip():
+                    lookahead += 1
+                    consumed += 1
+                    continue
+                match = re.search(r"^l\.(\d+)", next_line)
+                if match:
+                    line_num = int(match.group(1))
+                    context = next_line[match.end():].strip()
+                    error_lines.append({
+                        "line": line_num,
+                        "message": line[2:].strip(),  # strip "! " prefix
+                        "context": context,
+                        "severity": "error",
+                    })
+                    i = lookahead  # consume lines up to and including l.N
+                    break
+                # Stop scanning if we hit another ! or Output written
+                if next_line.startswith("!") or "Output written" in next_line:
+                    break
+                lookahead += 1
+                consumed += 1
+        # Warning lines
+        elif "Warning" in line or "warning" in line:
+            parsed_logs.append({"type": "warning", "message": line})
+            # Some warnings include inline line numbers
+            warn_match = re.search(r"(?:on input line|line)\s+(\d+)", line, re.IGNORECASE)
+            if warn_match:
+                error_lines.append({
+                    "line": int(warn_match.group(1)),
+                    "message": line.strip(),
+                    "context": "",
+                    "severity": "warning",
+                })
+        # Success indicators
+        elif "Output written" in line or "pages" in line.lower():
+            parsed_logs.append({"type": "success", "message": line})
+
+        i += 1
+
+    return parsed_logs, error_lines
 
 
 # ---------------------------------------------------------------------------
@@ -417,10 +492,72 @@ class CompileBody(BaseModel):
     compiler: str = "pdflatex"
 
 
+# Packages that visual-editor blocks commonly need. The backend injects them
+# only when the source actually uses the corresponding commands/environments
+# and the package is not already loaded.
+_PACKAGE_RULES = [
+    ("amsmath", [r"\\begin\{equation\}", r"\\begin\{align\}", r"\\begin\{gather\}"]),
+    ("graphicx", [r"\\includegraphics"]),
+    ("listings", [r"\\begin\{lstlisting\}"]),
+    ("array", [r"\\begin\{tabular\}"]),
+    ("hyperref", [r"\\href\{"]),
+    ("geometry", [r"\\usepackage\[.*\]\{geometry\}"]),  # keep; geometry is common
+]
+
+
+def _detect_missing_packages(content: str) -> list[str]:
+    """Return package names the content appears to need but doesn't already load."""
+    missing: list[str] = []
+    for pkg, patterns in _PACKAGE_RULES:
+        # Already loaded?
+        if re.search(rf"\\usepackage\s*(?:\[[^\]]*\])?\s*\{{{re.escape(pkg)}\}}", content):
+            continue
+        # Required by content?
+        for pat in patterns:
+            if re.search(pat, content):
+                missing.append(pkg)
+                break
+    return missing
+
+
+def _preprocess_latex_content(content: str) -> str:
+    """Ensure content can compile by injecting required packages or wrapping it."""
+    has_documentclass = r"\documentclass" in content
+
+    if not has_documentclass:
+        # The user is probably working in the visual editor with no preamble.
+        # Wrap the content in a minimal article template with required packages.
+        packages = _detect_missing_packages(content)
+        preamble = "\n".join(f"\\usepackage{{{pkg}}}" for pkg in packages)
+        if preamble:
+            preamble = "\n" + preamble + "\n"
+        return (
+            "\\documentclass[11pt]{article}\n"
+            "\\usepackage[margin=1in]{geometry}\n"
+            f"{preamble}"
+            "\\begin{document}\n\n"
+            f"{content}\n\n"
+            "\\end{document}\n"
+        )
+
+    # Full document: inject missing packages right after \documentclass.
+    missing = _detect_missing_packages(content)
+    if not missing:
+        return content
+
+    package_lines = "\n".join(f"\\usepackage{{{pkg}}}" for pkg in missing)
+    # Insert after the first \documentclass line.
+    def replacer(match: re.Match) -> str:
+        return f"{match.group(0)}\n{package_lines}"
+
+    return re.sub(r"(\\documentclass(?:\[[^\]]*\])?\{[^}]+\})", replacer, content, count=1)
+
+
 class CompileResult(BaseModel):
     build_id: str
     success: bool
     logs: list[dict[str, str]]
+    error_lines: list[dict[str, Any]]
     pdf_available: bool
     pdf_url: Optional[str] = None
     build_dir: Optional[str] = None
@@ -443,6 +580,13 @@ async def compile_latex(body: CompileBody):
     build_dir = _get_build_output_dir() / build_id
     build_dir.mkdir(parents=True, exist_ok=True)
 
+    # Preprocess source so that visual-editor blocks compile even when the
+    # original file is missing required packages (listings, graphicx, amsmath, ...).
+    original_content = source.read_text(encoding="utf-8")
+    processed_content = _preprocess_latex_content(original_content)
+    temp_source = build_dir / source.name
+    temp_source.write_text(processed_content, encoding="utf-8")
+
     try:
         result = subprocess.run(
             [
@@ -450,7 +594,7 @@ async def compile_latex(body: CompileBody):
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 f"-output-directory={build_dir}",
-                str(source),
+                str(temp_source),
             ],
             capture_output=True,
             text=True,
@@ -469,18 +613,7 @@ async def compile_latex(body: CompileBody):
     pdf_path = build_dir / pdf_name
     has_pdf = pdf_path.exists()
 
-    log_lines = result.stdout.splitlines() if result.stdout else []
-    stderr_lines = result.stderr.splitlines() if result.stderr else []
-    all_lines = log_lines + stderr_lines
-
-    parsed_logs: list[dict[str, str]] = []
-    for line in all_lines:
-        if line.startswith("!"):
-            parsed_logs.append({"type": "error", "message": line})
-        elif "Warning" in line or "warning" in line:
-            parsed_logs.append({"type": "warning", "message": line})
-        elif "Output written" in line or "pages" in line.lower():
-            parsed_logs.append({"type": "success", "message": line})
+    parsed_logs, error_lines = _parse_compile_logs(result.stdout, result.stderr)
 
     if result.returncode == 0 and has_pdf:
         pdf_size = pdf_path.stat().st_size
@@ -501,6 +634,7 @@ async def compile_latex(body: CompileBody):
         build_id=build_id,
         success=result.returncode == 0 and has_pdf,
         logs=parsed_logs,
+        error_lines=error_lines,
         pdf_available=has_pdf,
         pdf_url=f"/api/compile/{build_id}/pdf" if has_pdf else None,
         build_dir=str(build_dir) if has_pdf else None,

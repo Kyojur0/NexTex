@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface AdvancedSettingsProps {
@@ -44,18 +43,18 @@ const ColorPaletteSwatch = memo(function ColorPaletteSwatch({
     <button
       onClick={onClick}
       className={cn(
-        "flex flex-col gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer",
-        selected ? "border-foreground" : "border-border hover:border-muted-foreground"
+        "flex flex-col gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer bg-card/50 hover:bg-card",
+        selected ? "border-primary shadow-elevated" : "border-border/60 hover:border-border"
       )}
     >
       <span className="text-xs font-medium">{name}</span>
-      <div className="flex gap-1">
+      <div className="flex gap-1.5">
         <div
-          className="w-4 h-4 rounded border border-foreground/20"
+          className="w-5 h-5 rounded-md border border-foreground/10 shadow-sm"
           style={{ backgroundColor: colors.light }}
         />
         <div
-          className="w-4 h-4 rounded border border-foreground/20"
+          className="w-5 h-5 rounded-md border border-foreground/10 shadow-sm"
           style={{ backgroundColor: colors.dark }}
         />
       </div>
@@ -135,15 +134,15 @@ export const AdvancedSettings = memo(function AdvancedSettings({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border-border/60 shadow-floating p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <DialogTitle className="text-lg font-semibold tracking-tight">Settings</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
             Customize your editor experience and appearance.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 px-6 py-2">
           {/* Color Palettes */}
           <div className="space-y-3">
             <Label className="text-base font-semibold">Color Palette</Label>
@@ -165,7 +164,7 @@ export const AdvancedSettings = memo(function AdvancedSettings({
           </div>
 
           {/* Editor Settings */}
-          <div className="space-y-4 border-t pt-4">
+          <div className="space-y-4 bg-card/40 border border-border/40 rounded-2xl p-4">
             <h3 className="text-sm font-semibold">Editor</h3>
 
             <div className="space-y-2">
@@ -224,7 +223,7 @@ export const AdvancedSettings = memo(function AdvancedSettings({
           </div>
 
           {/* AI Settings */}
-          <div className="space-y-4 border-t pt-4">
+          <div className="space-y-4 bg-card/40 border border-border/40 rounded-2xl p-4">
             <h3 className="text-sm font-semibold">AI Assistant</h3>
             <p className="text-xs text-muted-foreground">
               Choose the model powering the AI Spotlight (Cmd+K). Use the Vercel AI Gateway models below.
@@ -295,7 +294,7 @@ export const AdvancedSettings = memo(function AdvancedSettings({
           </div>
 
           {/* Compiler Settings */}
-          <div className="space-y-4 border-t pt-4">
+          <div className="space-y-4 bg-card/40 border border-border/40 rounded-2xl p-4">
             <h3 className="text-sm font-semibold">Compiler</h3>
 
             <div className="space-y-2">
@@ -336,8 +335,8 @@ export const AdvancedSettings = memo(function AdvancedSettings({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t pt-4 mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <div className="flex justify-end gap-2 border-t border-border/40 pt-4 pb-6 mt-6 px-6">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-lg">
             Close
           </Button>
         </div>
