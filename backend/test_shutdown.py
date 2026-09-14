@@ -85,3 +85,38 @@ def test_shutdown_prevents_another_compiler_pass(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as error:
         main._run_command(["pdflatex"], cwd=str(tmp_path), env={}, timeout=60)
     assert error.value.status_code == 503
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group shutdown")
+def test_shutdown_stops_an_mcp_started_compiler_before_waiting_for_tools(tmp_path, monkeypatch):
+    ready = tmp_path / "mcp-compiler.pid"
+    script = "import os,pathlib,sys,time; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)"
+
+    def synthetic_compile(*_args):
+        main._run_command([sys.executable, "-c", script, str(ready)],
+                          cwd=str(tmp_path), env=dict(os.environ), timeout=5)
+        return {"success": False, "pdf_url": None}
+
+    monkeypatch.setattr(main, "_compile_latex_sync", synthetic_compile)
+    results = []
+    with TestClient(main.app, base_url="http://127.0.0.1:8000") as client:
+        def invoke():
+            try:
+                results.append(client.post("/mcp", headers={"Accept": "application/json, text/event-stream"},
+                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                        "name": "compile_document", "arguments": {"path": "fixture.tex"}}}))
+            except BaseException as error:
+                results.append(error)
+
+        worker = threading.Thread(target=invoke, daemon=True)
+        worker.start()
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists(), results
+        shutdown_started = time.monotonic()
+    worker.join(timeout=1)
+    assert time.monotonic() - shutdown_started < 3, "Shutdown waited for the tool's compiler timeout"
+    assert not worker.is_alive()
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(ready.read_text()), 0)

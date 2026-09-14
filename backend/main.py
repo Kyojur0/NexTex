@@ -28,8 +28,13 @@ import anyio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
+from starlette.routing import Mount
 from pydantic import BaseModel
 from PIL import Image, UnidentifiedImageError
+from mcp.server.transport_security import TransportSecuritySettings
+
+from editor_bridge import create_editor_router
+from mcp_server import ApiClient, create_mcp_server
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -39,10 +44,23 @@ from PIL import Image, UnidentifiedImageError
 async def _lifespan(app: FastAPI):
     with _COMPILER_PROCESSES_LOCK:
         _COMPILERS_SHUTTING_DOWN.clear()
-    try:
-        yield
-    finally:
-        _shutdown_compilers()
+    # A manager belongs to one lifespan (including repeated TestClient starts).
+    mcp = create_mcp_server(ApiClient(os.getenv("NEXTEX_API_URL", "http://127.0.0.1:8000"), app=app))
+    mcp_route.app = mcp.streamable_http_app(
+        stateless_http=True, json_response=True, max_request_body_size=16 * 1024 * 1024,
+        transport_security=TransportSecuritySettings(
+            allowed_hosts=["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*", "[::1]", "[::1]:*"],
+            allowed_origins=ALLOWED_ORIGINS,
+        ),
+    )
+    editor_broker.start()
+    async with mcp.session_manager.run():
+        try:
+            yield
+        finally:
+            # Stop work before the MCP manager waits for its tool tasks to exit.
+            _shutdown_compilers()
+            await editor_broker.close()
 
 
 app = FastAPI(
@@ -65,7 +83,13 @@ def _allowed_origins() -> list[str]:
 
 ALLOWED_ORIGINS = _allowed_origins()
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS,
-                   allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+                   allow_methods=["GET", "POST", "DELETE"],
+                   allow_headers=["Content-Type", "Mcp-Session-Id", "Mcp-Protocol-Version",
+                                  "Mcp-Method", "Mcp-Name", "Last-Event-ID"],
+                   expose_headers=["Mcp-Session-Id"])
+
+editor_router, editor_broker = create_editor_router(ALLOWED_ORIGINS)
+app.include_router(editor_router)
 
 
 @app.middleware("http")
@@ -371,6 +395,7 @@ def _capabilities() -> dict[str, Any]:
         "biber": shutil.which("biber") is not None,
         "assets": {"max_bytes": MAX_ASSET_BYTES, "mime_types": sorted({item[1] for item in IMAGE_TYPES.values()})},
         "revision_conflicts": True,
+        "mcp": {"endpoint": "/mcp", "transports": ["streamable-http", "stdio"], "live_editor": True},
     }
 
 
@@ -998,3 +1023,12 @@ async def get_compiled_pdf(build_id: str):
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{pdfs[0].name}"'},
     )
+
+
+async def _mcp_not_started(scope, receive, send):
+    await JSONResponse(status_code=503, content={"detail": "MCP requires the application lifespan"})(scope, receive, send)
+
+
+# Keep this final: a root mount must follow all ordinary API routes.
+mcp_route = Mount("/", app=_mcp_not_started)
+app.router.routes.append(mcp_route)

@@ -8,6 +8,7 @@ A local LaTeX editor with visual editing, source code, and PDF preview in one wo
 - Build PDFs with pdfLaTeX, XeLaTeX, or LuaLaTeX.
 - Manage local files, start from templates, and recover drafts or earlier versions.
 - Review AI suggestions before applying them. AI is optional and needs your own provider.
+- Connect agents through MCP to edit documents, manage files, and build PDFs.
 
 ![Visual editing beside the compiled PDF](docs/images/editor-visual.png)
 
@@ -26,4 +27,4 @@ Open [localhost:3000](http://127.0.0.1:3000). Use **File → Open Folder** to ch
 
 For production: `npm run build` then `npm start`. Run checks with `npm run check`.
 
-[Usage & AI setup](docs/usage.md) · [Architecture](frontend/IMPLEMENTATION_SUMMARY.md) · [Backend](backend/README.md)
+[Usage & AI setup](docs/usage.md) · [Agent / MCP setup](docs/mcp.md) · [Architecture](frontend/IMPLEMENTATION_SUMMARY.md) · [Backend](backend/README.md)

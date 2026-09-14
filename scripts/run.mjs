@@ -43,6 +43,7 @@ function stop(code = 0) {
 }
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => stop())
 const env = { ...process.env, NEXT_TELEMETRY_DISABLED: '1', NEXTEX_DIST_DIR: '.next', NEXT_PUBLIC_API_URL: `http://127.0.0.1:${apiPort}`,
+  NEXTEX_API_URL: `http://127.0.0.1:${apiPort}`,
   NEXTEX_ALLOWED_ORIGINS: process.env.NEXTEX_ALLOWED_ORIGINS || `http://127.0.0.1:${webPort},http://localhost:${webPort}` }
 function launch(command, args, cwd) {
   const child = spawn(command, args, { cwd, env, stdio: 'inherit' })

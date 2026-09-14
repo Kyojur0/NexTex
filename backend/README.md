@@ -1,5 +1,8 @@
 # NexTex local backend
 
+The backend also serves MCP at `/mcp`; see [agent setup and tools](../docs/mcp.md).
+Live editor controls use `/api/editor/connect` and share this process's session broker.
+
 Run from this directory with one Uvicorn worker:
 
 ```sh

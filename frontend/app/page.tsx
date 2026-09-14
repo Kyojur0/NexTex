@@ -32,6 +32,7 @@ import { AlertTriangle, FolderOpen, PanelLeftClose } from "lucide-react"
 import * as api from "@/lib/api"
 import { FileDialogs, type FileDialogMode } from '@/components/editor/file-dialogs'
 import { useDocumentLifecycle } from '@/hooks/use-document-lifecycle'
+import { useEditorBridge } from '@/hooks/use-editor-bridge'
 import { Toaster, toast } from 'sonner'
 import { useIsMobile } from '@/hooks/use-mobile'
 
@@ -374,6 +375,7 @@ const AISpotlightPane = memo(function AISpotlightPane() {
 
 function EditorInner() {
   useDocumentLifecycle()
+  useEditorBridge()
   const isMobile = useIsMobile()
   // Only subscribe to layout-level state that changes rarely
   const showPreview = useEditorStore((s) => s.showPreview)

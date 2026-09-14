@@ -32,7 +32,7 @@ export default defineConfig({
   webServer: [
     { command: '../backend/venv/bin/python -m uvicorn main:app --app-dir ../backend --host 127.0.0.1 --port 8011',
       url: 'http://127.0.0.1:8011/health', reuseExistingServer: false, timeout: 30000,
-      env: { NEXTEX_WORKSPACE_ROOT: workspace, NEXTEX_CONFIG_PATH: join(workspace, '.config.json'), NEXTEX_ALLOWED_ORIGINS: 'http://127.0.0.1:3011' } },
+      env: { NEXTEX_WORKSPACE_ROOT: workspace, NEXTEX_CONFIG_PATH: join(workspace, '.config.json'), NEXTEX_ALLOWED_ORIGINS: 'http://127.0.0.1:3011', NEXTEX_API_URL: 'http://127.0.0.1:8011' } },
     { command: 'npm run dev -- --hostname 127.0.0.1 --port 3011', url: 'http://127.0.0.1:3011',
       env: { NEXT_PUBLIC_API_URL: 'http://127.0.0.1:8011', NEXTEX_DIST_DIR: '.next-e2e', NEXT_TELEMETRY_DISABLED: '1', NEXTEX_AI_BASE_URL: 'http://127.0.0.1:8012/v1' },
       reuseExistingServer: false, timeout: 120000 },
