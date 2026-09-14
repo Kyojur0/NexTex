@@ -373,6 +373,10 @@
 .visual-source-host .cm-scroller { overflow:auto; line-height:1.8; font-family:inherit; }
 .visual-source-host .cm-content { padding:24px clamp(20px,5%,70px) 100px; caret-color:var(--visual-editor-text); }
 .visual-source-host .cm-line { padding:0; }
+.visual-source-host .cm-line:has(.visual-heading) {
+  padding-top:12px;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--visual-editor-text-dim) 40%,transparent) 18%,color-mix(in srgb,var(--visual-editor-text-dim) 40%,transparent) 82%,transparent) left top / 100% 1px no-repeat;
+}
 .visual-source-host .cm-selectionBackground { background:var(--visual-editor-tool-active) !important; }
 .visual-source-host .cm-cursor { border-left-color:var(--visual-editor-text); }
 .visual-source-host .cm-panels { background:var(--visual-editor-toolbar); color:var(--visual-editor-text); border-color:var(--visual-editor-toolbar-border); font:12px var(--font-sans); }
