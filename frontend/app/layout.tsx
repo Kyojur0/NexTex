@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 import '@fontsource-variable/dm-sans'
 import '@fontsource-variable/jetbrains-mono'
+import '@fontsource/noto-serif/400.css'
+import '@fontsource/noto-serif/400-italic.css'
+import '@fontsource/noto-serif/700.css'
+import '@fontsource/noto-serif/700-italic.css'
 import './globals.css'
 
 export const metadata: Metadata = {

@@ -1,128 +1,159 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EditorView } from '@codemirror/view'
 import { VisualEditor } from '@/components/editor/visual-editor'
 import { useEditorStore } from '@/lib/store'
 
-beforeEach(() => {
-  HTMLElement.prototype.scrollIntoView = vi.fn()
-  useEditorStore.setState({content:'Hello world.',activeFilePath:'one.tex',isModified:false})
+const wrap=(body:string)=>`\\documentclass{article}\n% Preserve my preamble.\n\\begin{document}\n${body}\n\\end{document}\n`
+const view=(container:HTMLElement)=>EditorView.findFromDOM(container.querySelector('.cm-editor')!)!
+beforeEach(()=>{
+  HTMLElement.prototype.scrollIntoView=vi.fn()
+  Range.prototype.getClientRects=vi.fn(()=>[] as unknown as DOMRectList)
+  Range.prototype.getBoundingClientRect=vi.fn(()=>new DOMRect())
+  useEditorStore.setState({content:'Hello world.',savedContent:'Hello world.',activeFilePath:'one.tex',workspaceRoot:'test',isModified:false,isNavigating:false,pendingDraft:null})
   useEditorStore.getState().resetSourceHistory()
 })
 afterEach(cleanup)
-function edit(el: HTMLElement, text: string) { el.textContent = text; el.innerText = text; fireEvent.input(el) }
 
-describe('visual document edits', () => {
-  it('synchronizes input before unmounting', () => {
-    const {container,unmount} = render(<VisualEditor />)
-    edit(container.querySelector<HTMLElement>('[contenteditable]')!, 'Changed.')
-    expect(useEditorStore.getState().content).toBe('Changed.')
-    unmount()
-    expect(useEditorStore.getState().content).toBe('Changed.')
+describe('continuous visual document',()=>{
+  it('publishes typing synchronously and preserves source outside the edit',()=>{
+    const original=wrap('An \\emph{original} phrase.\n\nSecond paragraph.\n\\custom{untouched}')
+    useEditorStore.setState({content:original})
+    const result=render(<VisualEditor/>),editor=view(result.container),from=original.indexOf('Second')
+    act(()=>editor.dispatch({changes:{from,to:from+6,insert:'Edited'}}))
+    result.unmount()
+    expect(useEditorStore.getState().content).toBe(original.replace('Second','Edited'))
   })
-  it('undoes and redoes edits through the toolbar', () => {
-    const {container} = render(<VisualEditor />)
-    edit(container.querySelector<HTMLElement>('[contenteditable]')!, 'Changed.')
+  it('undoes and redoes through the shared store across mode switches',()=>{
+    const first=render(<VisualEditor/>),editor=view(first.container)
+    act(()=>editor.dispatch({changes:{from:0,to:5,insert:'Changed'}}))
+    first.unmount();const second=render(<VisualEditor/>)
     fireEvent.click(screen.getByTitle('Undo'))
-    expect(useEditorStore.getState().content).toBe('Hello world.')
+    expect(view(second.container).state.doc.toString()).toBe('Hello world.')
     fireEvent.click(screen.getByTitle('Redo'))
-    expect(useEditorStore.getState().content).toBe('Changed.')
+    expect(view(second.container).state.doc.toString()).toBe('Changed world.')
   })
-  it('resets history when another file has identical content', () => {
-    const {container} = render(<VisualEditor />)
-    edit(container.querySelector<HTMLElement>('[contenteditable]')!, 'Changed.')
-    act(() => {
-      useEditorStore.setState({activeFilePath:'two.tex',content:'Changed.',isModified:false})
-      useEditorStore.getState().resetSourceHistory()
-    })
+  it('maps the caret for external agent changes without duplicate history entries',()=>{
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>editor.dispatch({selection:{anchor:5}}))
+    act(()=>useEditorStore.getState().setContent('New Hello world.'))
+    expect(view(result.container)).toBe(editor)
+    expect(editor.state.doc.toString()).toBe('New Hello world.')
+    expect(editor.state.selection.main.anchor).toBe(9)
+    act(()=>useEditorStore.getState().undo())
+    expect(editor.state.doc.toString()).toBe('Hello world.')
+    expect(useEditorStore.getState().canUndo).toBe(false)
+  })
+  it('resets the editor for another file with identical content',()=>{
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>editor.dispatch({changes:{from:0,to:5,insert:'Changed'}}))
+    act(()=>{useEditorStore.setState({activeFilePath:'two.tex'});useEditorStore.getState().resetSourceHistory()})
+    expect(view(result.container)).not.toBe(editor)
     expect(screen.getByTitle('Undo')).toBeDisabled()
-    expect(useEditorStore.getState().content).toBe('Changed.')
   })
-  it('handles menu insertion inside the document wrapper', () => {
-    useEditorStore.setState({content:'\\documentclass{article}\n\\begin{document}\nHello.\n\\end{document}\n'})
-    render(<VisualEditor />)
-    act(() => window.dispatchEvent(new CustomEvent('editor:command',{detail:{command:'insert',text:'\\section{Inserted}'}})))
-    const source = useEditorStore.getState().content
-    expect(source).toContain('\\section{Inserted}')
-    expect(source.indexOf('\\section{Inserted}')).toBeLessThan(source.indexOf('\\end{document}'))
+  it('formats across paragraphs as separate valid TeX arguments',()=>{
+    useEditorStore.setState({content:wrap('First paragraph.\n\nSecond paragraph.')})
+    const result=render(<VisualEditor/>),editor=view(result.container),source=editor.state.doc.toString()
+    act(()=>editor.dispatch({selection:{anchor:source.indexOf('First'),head:source.indexOf('\n\\end')}}))
+    fireEvent.click(screen.getByTitle('Bold (Ctrl+B)'))
+    expect(useEditorStore.getState().content).toBe(wrap('\\textbf{First paragraph.}\n\n\\textbf{Second paragraph.}'))
   })
-  it('offers keyboard-accessible block movement', () => {
-    useEditorStore.setState({content:'First.\n\nSecond.'})
-    const {container} = render(<VisualEditor />)
-    fireEvent.click(container.querySelector('[data-testid="block-card"]')!)
-    fireEvent.click(screen.getByTitle('Move down'))
-    expect(useEditorStore.getState().content).toContain('Second.\n\nFirst.')
+  it('uses one editing surface without rewriting macros on focus',()=>{
+    const original=wrap('An \\emph{original} phrase with \\custom{data}.')
+    useEditorStore.setState({content:original})
+    const result=render(<VisualEditor/>)
+    expect(result.container.querySelectorAll('[contenteditable=true]')).toHaveLength(1)
+    act(()=>view(result.container).focus())
+    expect(useEditorStore.getState().content).toBe(original)
   })
-  it('keeps multirow merges valid when a row is inserted inside them', () => {
-    useEditorStore.setState({content:'\\begin{table}[h]\n\\centering\n\\begin{tabular}{l|l}\n\\hline\n\\multirow{2}{*}{A} & B \\\\\n & C \\\\\n\\hline\n\\end{tabular}\n\\caption{}\n\\end{table}'})
-    const {container} = render(<VisualEditor />)
-    fireEvent.click(container.querySelector('[data-testid="block-card"]')!)
-    fireEvent.click(screen.getByTitle('Add row above row 2'))
-    expect(useEditorStore.getState().content).toContain('\\multirow{3}{*}{A}')
+  it('inserts menu commands into the body',()=>{
+    useEditorStore.setState({content:wrap('Hello.')})
+    render(<VisualEditor/>)
+    act(()=>window.dispatchEvent(new CustomEvent('editor:command',{detail:{command:'insert',text:'\\section{Inserted}\n'}})))
+    expect(useEditorStore.getState().content).toBe(wrap('\\section{Inserted}\nHello.'))
   })
-  it('does not rewrite untouched inline macros when focus leaves a paragraph', () => {
-    const source = 'An \\emph{original} phrase.'
+  it('preserves document boundaries when replacing Select All through Insert',()=>{
+    const source=wrap('Hello.')
     useEditorStore.setState({content:source})
-    const {container} = render(<VisualEditor />)
-    const editor = container.querySelector<HTMLElement>('[contenteditable]')!
-    fireEvent.focus(editor); fireEvent.blur(editor)
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>editor.dispatch({selection:{anchor:0,head:source.length}}))
+    fireEvent.pointerDown(screen.getByRole('button',{name:'Insert'}),{button:0,ctrlKey:false,pointerType:'mouse'})
+    fireEvent.click(screen.getByRole('menuitem',{name:'Symbol'}))
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(useEditorStore.getState().content).toMatch(/^\\documentclass\{article\}\n% Preserve my preamble\.\n\\begin\{document\}/)
+    expect(useEditorStore.getState().content).toMatch(/\\end\{document\}\n$/)
+  })
+  it('rejects a dialog selection crossing concealed formatting',()=>{
+    const source=wrap('A \\textbf{bold phrase} after.')
+    useEditorStore.setState({content:source})
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>editor.dispatch({selection:{anchor:source.indexOf('phrase'),head:source.indexOf('after')+5}}))
+    fireEvent.pointerDown(screen.getByRole('button',{name:'Insert'}),{button:0,ctrlKey:false,pointerType:'mouse'})
+    fireEvent.click(screen.getByRole('menuitem',{name:'Link'}))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(useEditorStore.getState().content).toBe(source)
-    expect(screen.getByTitle('Undo')).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent(/formatting boundary/)
   })
-  it.each([['Superscript','textsuperscript'],['Subscript','textsubscript'],['Bold (Ctrl+B)','textbf']])('applies %s to the selected text', (title,command) => {
-    const {container} = render(<VisualEditor />)
-    const editor = container.querySelector<HTMLElement>('[contenteditable]')!
-    const range = document.createRange(); range.setStart(editor.firstChild!,0); range.setEnd(editor.firstChild!,5)
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
-    fireEvent.click(screen.getByTitle(title))
-    expect(useEditorStore.getState().content).toBe(`\\${command}{Hello} world.`)
+  it('balances formatting when the app menu inserts across a hidden delimiter',()=>{
+    const source=wrap('A \\textbf{bold phrase} after.')
+    useEditorStore.setState({content:source})
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>editor.dispatch({selection:{anchor:source.indexOf('phrase'),head:source.indexOf('after')+5}}))
+    act(()=>window.dispatchEvent(new CustomEvent('editor:command',{detail:{command:'insert',text:'inserted'}})))
+    expect(useEditorStore.getState().content).toBe(wrap('A \\textbf{bold inserted}.'))
   })
-  it('navigates and replaces an individual find result', () => {
-    useEditorStore.setState({content:'First word.\n\nSecond word.'})
-    render(<VisualEditor />)
-    act(() => window.dispatchEvent(new CustomEvent('editor:command',{detail:{command:'replace'}})))
-    fireEvent.change(screen.getByLabelText('Find LaTeX'),{target:{value:'word'}})
-    fireEvent.click(screen.getByRole('button',{name:'Next match'}))
-    fireEvent.change(screen.getByLabelText('Replacement'),{target:{value:'result'}})
-    fireEvent.click(screen.getByRole('button',{name:'Replace match'}))
-    expect(useEditorStore.getState().content).toBe('First word.\n\nSecond result.')
+  it('inserts dependencies outside preamble comments',()=>{
+    const source='\\documentclass{article}\n% \\begin{document}\n\\begin{document}\nHello.\n\\end{document}\n'
+    useEditorStore.setState({content:source})
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>editor.dispatch({selection:{anchor:source.indexOf('Hello'),head:source.indexOf('Hello')+6}}))
+    fireEvent.click(screen.getByTitle('Strikethrough'))
+    expect(useEditorStore.getState().content).toBe(source.replace('\\begin{document}\nHello.','\\usepackage[normalem]{ulem}\n\\begin{document}\n\\sout{Hello.}'))
   })
-  it('consumes slash commands when inserting a new block', () => {
-    const {container} = render(<VisualEditor />)
-    const editor = container.querySelector<HTMLElement>('[contenteditable]')!
-    const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false)
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
-    fireEvent.keyDown(editor,{key:'/'})
-    edit(editor,'Hello world./')
-    range.selectNodeContents(editor); range.collapse(false); selection.removeAllRanges(); selection.addRange(range)
-    fireEvent.click(screen.getByRole('button',{name:'Equation'}))
-    expect(useEditorStore.getState().content).not.toContain('world./')
-    expect(useEditorStore.getState().content).toContain('\\begin{equation}')
-  })
-  it('splits a list item at the caret on Enter', () => {
-    useEditorStore.setState({content:'\\begin{itemize}\n  \\item Alpha beta\n\\end{itemize}'})
-    const {container} = render(<VisualEditor />)
-    const editor = container.querySelector<HTMLElement>('[contenteditable]')!
-    const range = document.createRange(); range.setStart(editor.firstChild!,6); range.collapse(true)
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
-    fireEvent.keyDown(editor,{key:'Enter'})
-    expect(useEditorStore.getState().content).toContain('\\item Alpha\n  \\item beta')
-  })
-  it('preserves undo after switching away and back without changing documents', () => {
-    const first = render(<VisualEditor />)
-    edit(first.container.querySelector<HTMLElement>('[contenteditable]')!, 'Changed.')
-    first.unmount()
-    render(<VisualEditor />)
-    fireEvent.click(screen.getByTitle('Undo'))
+  it('rejects edits during navigation',()=>{
+    const result=render(<VisualEditor/>),editor=view(result.container)
+    act(()=>useEditorStore.setState({isNavigating:true}))
+    act(()=>editor.dispatch({changes:{from:0,to:5,insert:'Lost'}}))
+    expect(editor.state.doc.toString()).toBe('Hello world.')
     expect(useEditorStore.getState().content).toBe('Hello world.')
   })
-  it.each(['% Example: \\begin{document}\n','% \\usepackage[normalem]{ulem}\n'])('inserts dependencies outside preamble comments', (comment) => {
-    const source = '\\documentclass{article}\n' + comment + '\\begin{document}\nHello.\n\\end{document}\n'
-    useEditorStore.setState({content:source})
-    const {container} = render(<VisualEditor />)
-    const editor = container.querySelector<HTMLElement>('[data-latex-editor]')!
-    const range = document.createRange(); range.selectNodeContents(editor)
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
-    fireEvent.click(screen.getByTitle('Strikethrough'))
-    expect(useEditorStore.getState().content).toBe('\\documentclass{article}\n' + comment + '\\usepackage[normalem]{ulem}\n\\begin{document}\n\\sout{Hello.}\n\\end{document}\n')
+  it('edits math atomically, preserving inline delimiters',()=>{
+    useEditorStore.setState({content:wrap('Energy $E = mc^2$ is useful.')})
+    render(<VisualEditor/>)
+    fireEvent.click(screen.getByRole('button',{name:'Edit math'}))
+    fireEvent.change(screen.getByRole('textbox',{name:'Equation'}),{target:{value:'x^2'}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(useEditorStore.getState().content).toBe(wrap('Energy $x^2$ is useful.'))
+    fireEvent.click(screen.getByTitle('Undo'))
+    expect(useEditorStore.getState().content).toBe(wrap('Energy $E = mc^2$ is useful.'))
   })
+  it('rejects a stale dialog after an agent edits the document',()=>{
+    useEditorStore.setState({content:wrap('Energy $E = mc^2$.')})
+    render(<VisualEditor/>)
+    fireEvent.click(screen.getByRole('button',{name:'Edit math'}))
+    fireEvent.change(screen.getByRole('textbox',{name:'Equation'}),{target:{value:'x^2'}})
+    act(()=>useEditorStore.getState().setContent(wrap('An agent changed this.')))
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(useEditorStore.getState().content).toBe(wrap('An agent changed this.'))
+    expect(screen.getByText(/document changed while/)).toBeVisible()
+  })
+  it('turns selected prose into a new equation',()=>{
+    useEditorStore.setState({content:wrap('Use x squared here.')})
+    const result=render(<VisualEditor/>),editor=view(result.container),source=editor.state.doc.toString(),from=source.indexOf('x squared')
+    act(()=>editor.dispatch({selection:{anchor:from,head:from+9}}))
+    fireEvent.pointerDown(screen.getByRole('button',{name:'Insert'}),{button:0,ctrlKey:false,pointerType:'mouse'})
+    fireEvent.click(screen.getByRole('menuitem',{name:'Equation'}))
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(useEditorStore.getState().content).toContain('\\[\nx squared\n\\]')
+  })
+
+  it.each(['\\label{sec:old}','\\eqref{sec:old}','\\citep[see]{sec:old}'])('preserves the command and options when editing %s',original=>{
+    useEditorStore.setState({content:wrap('Before '+original+' after.')})
+    render(<VisualEditor/>)
+    fireEvent.click(screen.getByRole('button',{name:'Edit reference'}))
+    fireEvent.change(screen.getByRole('textbox'),{target:{value:'sec:new'}})
+    fireEvent.click(screen.getByRole('button',{name:'Apply'}))
+    expect(useEditorStore.getState().content).toBe(wrap('Before '+original.replace('sec:old','sec:new')+' after.'))
+  })
+
 })

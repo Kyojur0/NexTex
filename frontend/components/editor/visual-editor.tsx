@@ -1,378 +1,204 @@
-"use client"
+'use client'
 
-import { memo, useState, useEffect, useLayoutEffect, useCallback, useRef } from "react"
-import { useEditorStore } from "@/lib/store"
-import { parseLaTeXToBlocks } from "@/lib/visual-editor/parser"
-import { blocksToLaTeX } from "@/lib/visual-editor/serializer"
-import { getPlugin } from "@/lib/visual-editor/plugins"
-import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
-import { createBlock } from "@/lib/visual-editor/types"
-import { applyInlineFormat, selectionEditor } from "@/lib/visual-editor/inline"
-import { BlockCanvas } from "./block-canvas"
-import { LatexOutputPanel } from "./latex-output-panel"
-import { FormattingToolbar, type FormatState, type ParagraphStyle } from "@/lib/visual-editor/components/formatting-toolbar"
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from '@codemirror/state'
+import { EditorView, keymap, drawSelection, highlightSpecialChars, placeholder } from '@codemirror/view'
+import { defaultKeymap, deleteCharBackward, deleteCharForward } from '@codemirror/commands'
+import { search, searchKeymap, openSearchPanel } from '@codemirror/search'
+import { Code2, Eye } from 'lucide-react'
+import { useEditorStore } from '@/lib/store'
+import { formatSource, setHeading, toggleList, continueList, continueVisualParagraph, insertSource, getSourceFormatting } from '@/lib/visual-source/commands'
+import { visualDecorations, revealSource } from '@/lib/visual-source/decorations'
+import { guardVisualChange } from '@/lib/visual-source/edit-guard'
+import { scanVisualSource } from '@/lib/visual-source/scanner'
+import type { InlineFormat, InsertKind, SourceDialogRequest, SourceEdit, VisualSpan } from '@/lib/visual-source/types'
+import { VisualToolbar } from './visual-source/toolbar'
+import { InsertDialog } from './visual-source/insert-dialog'
+import { LatexOutputPanel } from './latex-output-panel'
+import 'katex/dist/katex.min.css'
 
-const defaultFormat: FormatState = { bold:false,italic:false,underline:false,strikethrough:false,superscript:false,subscript:false,code:false }
-
-function addRequiredPackages(blocks: AnyVisualBlock[]): AnyVisualBlock[] {
-  const start = blocks.findIndex(block => block.boundary === 'start')
-  if (start < 0) return blocks
-  const changed = blocks.filter(block => !block.source || block.source.data !== JSON.stringify(block.data))
-  const text = changed.map(block => getPlugin(block.type).toLaTeX(block.data)).join('\n')
-  const packages = [
-    [/\\includegraphics\b/, 'graphicx'], [/\\begin\{lstlisting\}/, 'listings'],
-    [/\\multirow\b/, 'multirow'], [/\\sout\b/, 'ulem'], [/\\begin\{equation\*\}|\\begin\{aligned\}/, 'amsmath'],
-    [/\\href\b/, 'hyperref'],
-  ] as const
-  const original = blocks[start].data as {latex:string}
-  let preamble = original.latex
-  for (const [pattern,name] of packages) {
-    const activePreamble = preamble.replace(/\\[^\r\n]|%[^\r\n]*/g, token => token.startsWith('%') ? '' : token)
-    if (!pattern.test(text) || new RegExp('\\\\(?:usepackage|RequirePackage)(?:\\[[^\\]]*\\])?\\{[^}]*\\b' + name + '\\b[^}]*\\}').test(activePreamble)) continue
-    // The protected start block ends at the real document marker; earlier copies can be comments.
-    const insertion = preamble.lastIndexOf('\\begin{document}')
-    if (insertion < 0) continue
-    preamble = preamble.slice(0,insertion) + `\\usepackage${name === 'ulem' ? '[normalem]' : ''}{${name}}\n` + preamble.slice(insertion)
+const externalChange = Annotation.define<boolean>()
+const structuredChange = Annotation.define<boolean>()
+const selections = new Map<string,{source:string;anchor:number;head:number}>()
+type DialogSession = SourceDialogRequest & {snapshot:string;identity:string}
+const documentIdentity = () => {const state=useEditorStore.getState(); return `${state.workspaceRoot}\0${state.activeFilePath || ''}`}
+function firstPosition(source:string) {
+  const spans=scanVisualSource(source), preamble=spans.find(span=>span.kind==='preamble')
+  let at=preamble?.to || 0
+  while (/\s/.test(source[at] || '') && at < source.length) at++
+  for (const span of spans) if (span.from === at && span.kind==='hidden') at=span.to
+  return at
+}
+function bodySelection(view:EditorView) {
+  const source=view.state.doc.toString(),spans=scanVisualSource(source),selection=view.state.selection.main
+  const start=spans.find(span=>span.kind==='preamble')?.to ?? 0
+  const end=spans.find(span=>span.kind==='environment' && span.value==='document')?.from ?? source.length
+  return {from:Math.max(start,Math.min(end,selection.from)),to:Math.max(start,Math.min(end,selection.to))}
+}
+function guardedInsert(source:string,selection:{from:number;to:number},latex:string):SourceEdit {
+  const guarded=guardVisualChange(source,selection.from,selection.to,latex,scanVisualSource(source))
+  if(!guarded)return {changes:[],selection:{anchor:selection.from}}
+  return {...insertSource(source,guarded,guarded.insert),selection:{anchor:guarded.cursor}}
+}
+function difference(before:string,after:string) {
+  let from=0, endBefore=before.length,endAfter=after.length
+  while (from < endBefore && from < endAfter && before[from]===after[from]) from++
+  while (endBefore > from && endAfter > from && before[endBefore-1]===after[endAfter-1]) {endBefore--;endAfter--}
+  return {from,to:endBefore,insert:after.slice(from,endAfter)}
+}
+function requiredPackages(source:string,addition:string) {
+  const preamble=scanVisualSource(source).find(span=>span.kind==='preamble')
+  if (!preamble) return source
+  const active=source.slice(0,preamble.to).replace(/\\[^\r\n]|%[^\r\n]*/g,token=>token.startsWith('%') ? '' : token)
+  let packages=''
+  for (const [pattern,name,options] of [[/\\includegraphics\b/,'graphicx',''],[/\\multirow\b/,'multirow',''],[/\\sout\b/,'ulem','[normalem]'],[/\\href\b/,'hyperref',''],[/\\begin\{(?:equation\*|align\*?|aligned|gather\*?)\}/,'amsmath','']] as const) {
+    if (pattern.test(addition) && !new RegExp('\\\\(?:usepackage|RequirePackage)(?:\\[[^\\]]*\\])?\\{[^}]*\\b'+name+'\\b[^}]*\\}').test(active)) packages+=`\\usepackage${options}{${name}}\n`
   }
-  if (preamble === original.latex) return blocks
-  return blocks.map((block,index) => index === start ? {...block,data:{latex:preamble}} : block)
+  const at=source.lastIndexOf('\\begin',preamble.to-1)
+  return packages && at>=0 ? source.slice(0,at)+packages+source.slice(at) : source
 }
 
 export const VisualEditor = memo(function VisualEditor() {
-  const content = useEditorStore(state => state.content)
-  const activeFilePath = useEditorStore(state => state.activeFilePath)
-  const workspaceRoot = useEditorStore(state => state.workspaceRoot)
-  const isModified = useEditorStore(state => state.isModified)
-  const isSaving = useEditorStore(state => state.isSaving)
-  const setContent = useEditorStore(state => state.setContent)
-  const undo = useEditorStore(state => state.undo)
-  const redo = useEditorStore(state => state.redo)
-  const canUndo = useEditorStore(state => state.canUndo)
-  const canRedo = useEditorStore(state => state.canRedo)
-  const setActiveEditorTab = useEditorStore(state => state.setActiveEditorTab)
-  const showVisualLatexPanel = useEditorStore(state => state.showVisualLatexPanel)
-  const setShowVisualLatexPanel = useEditorStore(state => state.setShowVisualLatexPanel)
-  const [blocks,setBlocks] = useState<AnyVisualBlock[]>(() => parseLaTeXToBlocks(content))
-  const blocksRef = useRef(blocks)
-  const sourceRef = useRef(content)
-  const identity = `${workspaceRoot || ''}\0${activeFilePath || ''}`
-  const identityRef = useRef(identity)
-  const [activeId,setActiveId] = useState<string | null>(null)
-  const [focusedBlockId,setFocusedBlockId] = useState<string | null>(null)
-  const [format,setFormat] = useState<FormatState>(defaultFormat)
-  const [searchMode,setSearchMode] = useState<'find'|'replace'|null>(null)
-  const [query,setQuery] = useState('')
-  const [replacement,setReplacement] = useState('')
-  const [searchIndex,setSearchIndex] = useState(0)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
+  const content=useEditorStore(state=>state.content)
+  const path=useEditorStore(state=>state.activeFilePath)
+  const workspace=useEditorStore(state=>state.workspaceRoot)
+  const isModified=useEditorStore(state=>state.isModified)
+  const isSaving=useEditorStore(state=>state.isSaving)
+  const blocked=useEditorStore(state=>state.isNavigating || !!state.pendingDraft)
+  const canUndo=useEditorStore(state=>state.canUndo),canRedo=useEditorStore(state=>state.canRedo)
+  const [latexPanel,setLatexPanel]=useState(false)
+  const [formatting,setFormatting]=useState(()=>getSourceFormatting(content,{from:firstPosition(content),to:firstPosition(content)}))
+  const [dialog,setDialog]=useState<DialogSession|null>(null)
+  const [revealed,setRevealed]=useState(false)
+  const [notice,setNotice]=useState('')
+  const host=useRef<HTMLDivElement>(null),viewRef=useRef<EditorView|null>(null)
+  const editable=useRef(new Compartment())
+  const identity=`${workspace}\0${path || ''}`
+
+  const apply = useCallback((view:EditorView,edit:SourceEdit) => {
+    if (!edit.changes.length) {setNotice('Select plain text, or edit this LaTeX directly in Code view.');view.focus();return}
+    setNotice('')
+    const transaction=view.state.update({...edit,selection:EditorSelection.single(edit.selection.anchor,edit.selection.head ?? edit.selection.anchor),userEvent:'input',annotations:structuredChange.of(true)})
+    const changed=transaction.newDoc.toString(),withPackages=requiredPackages(changed,edit.changes.map(change=>change.insert).join('\n'))
+    if (withPackages !== changed) {
+      const extra=difference(changed,withPackages), delta=extra.insert.length-(extra.to-extra.from)
+      const selection=transaction.newSelection.main
+      view.dispatch({changes:difference(view.state.doc.toString(),withPackages),selection:{anchor:selection.anchor+(selection.anchor>=extra.from?delta:0),head:selection.head+(selection.head>=extra.from?delta:0)},userEvent:'input',annotations:structuredChange.of(true)})
+    } else view.dispatch(transaction)
+    view.focus()
+  },[])
+  const insert = useCallback((kind:InsertKind,span?:VisualSpan) => {
+    const view=viewRef.current
+    if (!view) return
+    const source=view.state.doc.toString(),selection=bodySelection(view)
+    const from=span?.from ?? selection.from,to=span?.to ?? selection.to
+    if(!span) {
+      const guarded=guardVisualChange(source,from,to,'',scanVisualSource(source))
+      if(!guarded || guarded.insert || guarded.from!==from || guarded.to!==to) {
+        setNotice('This selection crosses a formatting boundary. Select text within one format, or use Code view.');view.focus();return
+      }
+    }
+    setNotice('')
+    setDialog({kind,from,to,latex:source.slice(from,to),snapshot:source,identity:documentIdentity()})
+  },[])
+  const format = useCallback((kind:InlineFormat) => {const view=viewRef.current;if(view) apply(view,formatSource(view.state.doc.toString(),bodySelection(view),kind))},[apply])
 
   useLayoutEffect(() => {
-    if (sourceRef.current === content && identityRef.current === identity) return
-    const parsed = parseLaTeXToBlocks(content)
-    sourceRef.current = content; identityRef.current = identity; blocksRef.current = parsed
-    setBlocks(parsed); setFocusedBlockId(null); setActiveId(null)
-  },[content,identity])
-
-  const publish = useCallback((next: AnyVisualBlock[], source = blocksToLaTeX(next)) => {
-    sourceRef.current = source; blocksRef.current = next
-    setBlocks(next); setContent(source)
-  },[setContent])
-
-  const commit = useCallback((next: AnyVisualBlock[]) => {
-    next = addRequiredPackages(next)
-    const source = blocksToLaTeX(next)
-    if (source === sourceRef.current && JSON.stringify(next) === JSON.stringify(blocksRef.current)) return
-    publish(next,source)
-  },[publish])
-
-  const focus = useCallback((id:string, end=false) => {
-    setFocusedBlockId(id)
-    requestAnimationFrame(() => {
-      const element = rootRef.current?.querySelector<HTMLElement>(`[data-block-id="${id}"] [contenteditable], [data-block-id="${id}"] textarea, [data-block-id="${id}"] input`)
-      element?.focus()
-      if (end && element?.hasAttribute('contenteditable')) {
-        const range = document.createRange(); range.selectNodeContents(element); range.collapse(false)
-        const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
+    if (!host.current) return
+    const current=useEditorStore.getState(), initial=current.content, saved=selections.get(identity)
+    const decoration=visualDecorations({assetDirectory:path?.includes('/') ? path.slice(0,path.lastIndexOf('/')+1) : '',activate:(span,view)=>{
+      if (['math','figure','table','reference'].includes(span.kind)) {
+        const kind:InsertKind=span.kind==='figure'?'image':span.kind==='reference' ? (/^\\(?:cite|parencite|textcite|autocite)/.test(view.state.sliceDoc(span.from,span.to))?'citation':'reference') : span.kind as InsertKind
+        insert(kind,span)
+      } else {
+        view.dispatch({effects:revealSource.of({from:span.from,to:span.to}),selection:{anchor:span.from}});view.focus();setRevealed(true)
       }
-    })
-  },[])
-
-  const insertBlocks = useCallback((index:number, additions:AnyVisualBlock[]) => {
-    const current = blocksRef.current
-    const first = current[0]?.boundary === 'start' ? 1 : 0
-    const last = current[current.length - 1]?.boundary === 'end' ? current.length - 1 : current.length
-    const next = [...current]
-    next.splice(Math.max(first,Math.min(last,index)),0,...additions)
-    commit(next)
-    if (additions[0]) focus(additions[0].id)
-  },[commit,focus])
-  const handleInsertAt = useCallback((index:number,type:BlockType) => {
-    insertBlocks(index,[createBlock(type,structuredClone(getPlugin(type).defaultData))])
-  },[insertBlocks])
-  const handleAdd = useCallback((type:BlockType) => handleInsertAt(blocksRef.current.length,type),[handleInsertAt])
-  const handleInsertAfter = useCallback((id:string,type:BlockType) => {
-    handleInsertAt(blocksRef.current.findIndex(block => block.id === id) + 1,type)
-  },[handleInsertAt])
-  const handleChange = useCallback((id:string,data:unknown) => {
-    if (!blocksRef.current.some(block => block.id === id && JSON.stringify(block.data) !== JSON.stringify(data))) return
-    commit(blocksRef.current.map(block => block.id === id ? {...block,data} : block))
-  },[commit])
-  const handleReorder = useCallback((next:AnyVisualBlock[]) => {
-    const current = blocksRef.current
-    if (current.some((block,index) => block.boundary && next[index]?.id !== block.id)) return
-    commit(next)
-  },[commit])
-  const handleDelete = useCallback((id:string) => {
-    if (blocksRef.current.find(block => block.id === id)?.boundary) return
-    const next = blocksRef.current.filter(block => block.id !== id)
-    commit(next); setFocusedBlockId(null)
-  },[commit])
-  const handleDuplicate = useCallback((id:string) => {
-    const current = blocksRef.current, index = current.findIndex(block => block.id === id), original = current[index]
-    if (!original || original.boundary) return
-    insertBlocks(index + 1,[createBlock(original.type,structuredClone(original.data))])
-  },[insertBlocks])
-  const move = useCallback((id:string,direction:number) => {
-    const next = [...blocksRef.current], index = next.findIndex(block => block.id === id), target = index + direction
-    if (index < 0 || target < 0 || target >= next.length || next[index].boundary || next[target].boundary) return
-    ;[next[index],next[target]] = [next[target],next[index]]; commit(next)
-  },[commit])
-  const handleMoveUp = useCallback((id:string) => move(id,-1),[move])
-  const handleMoveDown = useCallback((id:string) => move(id,1),[move])
-  const handleSplit = useCallback((id:string,beforeData:unknown,afterData:unknown) => {
-    const next = [...blocksRef.current], index = next.findIndex(block => block.id === id)
-    if (index < 0) return
-    const original = next[index]
-    next[index] = {...original,data:beforeData}
-    const after = original.type === 'section'
-      ? createBlock('paragraph',{text:(afterData as {title:string}).title})
-      : createBlock(original.type,afterData)
-    next.splice(index + 1,0,after); commit(next); focus(after.id)
-  },[commit,focus])
-  const handleMergeUp = useCallback((id:string) => {
-    const next = [...blocksRef.current], index = next.findIndex(block => block.id === id)
-    if (index <= 0) return
-    const previous = next[index - 1], current = next[index]
-    if (!getPlugin(previous.type).isText || !getPlugin(current.type).isText) return
-    const previousKey = previous.type === 'section' ? 'title' : 'text', currentKey = current.type === 'section' ? 'title' : 'text'
-    const text = (previous.data as Record<string,string>)[previousKey] + (current.data as Record<string,string>)[currentKey]
-    next[index - 1] = {...previous,data:{...(previous.data as object),[previousKey]:text}}
-    next.splice(index,1); commit(next); focus(previous.id,true)
-  },[commit,focus])
-  const handleFocus = useCallback((id:string) => setFocusedBlockId(id),[])
-  const handleBlur = useCallback(() => {},[])
-  const handleDragStart = useCallback((id:string | null) => setActiveId(id),[])
-  const focusedBlock = blocks.find(block => block.id === focusedBlockId)
-  const activeBlock = blocks.find(block => block.id === activeId) || null
-  const paragraphStyle: ParagraphStyle = focusedBlock?.type === 'section'
-    ? ({section:'heading-1',subsection:'heading-2',subsubsection:'heading-3'} as const)[(focusedBlock.data as {level:'section'|'subsection'|'subsubsection'}).level]
-    : 'normal'
-  const latex = blocksToLaTeX(blocks)
-
-  useEffect(() => {
-    const changed = () => {
-      const selection = window.getSelection(), editor = selectionEditor()
-      if (!editor || !rootRef.current?.contains(editor)) return
-      const node = selection?.anchorNode
-      const element = node instanceof Element ? node : node?.parentElement
-      const selectors: Record<keyof FormatState,string> = {bold:'strong,b',italic:'em,i',underline:'u',strikethrough:'s,strike,del',code:'code',superscript:'sup',subscript:'sub'}
-      setFormat(Object.fromEntries(Object.entries(selectors).map(([key,selector]) => [key,Boolean(element?.closest(selector))])) as unknown as FormatState)
+    }})
+    const undo=()=>{useEditorStore.getState().undo();return true},redo=()=>{useEditorStore.getState().redo();return true}
+    const editor=new EditorView({parent:host.current,state:EditorState.create({doc:initial,selection:saved?.source===initial ? {anchor:saved.anchor,head:saved.head} : {anchor:firstPosition(initial)},extensions:[
+      decoration.extension,EditorView.lineWrapping,drawSelection(),highlightSpecialChars(),placeholder('Start writing…'),search({top:true}),
+      editable.current.of(EditorState.readOnly.of(current.isNavigating || !!current.pendingDraft)),
+      EditorView.contentAttributes.of({'aria-label':'Visual document','data-testid':'visual-document','spellcheck':'true'}),
+      EditorState.transactionFilter.of(transaction=>{
+        const state=useEditorStore.getState()
+        if (transaction.docChanged && !transaction.annotation(externalChange) && (state.isNavigating || state.pendingDraft)) return []
+        if (transaction.docChanged && !transaction.annotation(externalChange) && !transaction.annotation(structuredChange) && !transaction.startState.field(decoration.field).revealed) {
+          const changes: {from:number;to:number;insert:string}[]=[]
+          let altered=false,cursor=0
+          transaction.changes.iterChanges((from,to,_a,_b,text)=>{
+            const insert=text.toString(),guarded=guardVisualChange(transaction.startState.doc.toString(),from,to,insert,transaction.startState.field(decoration.field).spans)
+            if(!guarded){altered=true;return}
+            if(guarded.from!==from || guarded.to!==to || guarded.insert!==insert)altered=true
+            changes.push(guarded);cursor=guarded.cursor
+          })
+          if(altered)return {changes,selection:{anchor:cursor},userEvent:transaction.annotation(Transaction.userEvent)}
+        }
+        return transaction
+      }),
+      keymap.of([
+        {key:'Mod-z',run:undo},{key:'Mod-Shift-z',run:redo},{key:'Mod-y',run:redo},
+        ...(['Ctrl','Meta'] as const).flatMap(modifier=>([['b','bold'],['i','italic'],['u','underline']] as const).map(([key,style])=>({key:`${modifier}-${key}`,run:()=>{format(style);return true}}))),
+        ...(['Backspace','Delete'] as const).map(key=>({key,run:(view:EditorView)=>{
+          const state=view.state.field(decoration.field),selection=view.state.selection.main
+          if(!selection.empty || state.revealed)return false
+          let at=selection.head,previous=-1
+          while(previous!==at) {previous=at;for(const span of state.spans)if(span.kind==='hidden' && (key==='Backspace'?span.to===at:span.from===at))at=key==='Backspace'?span.from:span.to}
+          if(at===selection.head)return false
+          view.dispatch({selection:{anchor:at}})
+          return key==='Backspace'?deleteCharBackward(view):deleteCharForward(view)
+        }})),
+        {key:'Enter',run:view=>{const edit=continueList(view.state.doc.toString(),view.state.selection.main) ?? continueVisualParagraph(view.state.doc.toString(),view.state.selection.main);if(!edit)return false;apply(view,edit);return true}},
+        {key:'Escape',run:view=>{if(!view.state.field(decoration.field).revealed)return false;view.dispatch({effects:revealSource.of(null)});setRevealed(false);return true}},
+        ...searchKeymap,...defaultKeymap,
+      ]),
+      EditorView.updateListener.of(update=>{
+        const source=update.state.doc.toString(),selection=update.state.selection.main
+        if (update.docChanged && !update.transactions.every(transaction=>transaction.annotation(externalChange))) useEditorStore.getState().setContent(source)
+        if(update.docChanged || update.selectionSet) {
+          selections.set(identity,{source,anchor:selection.anchor,head:selection.head})
+          if(selections.size>20) selections.delete(selections.keys().next().value!)
+          setFormatting(getSourceFormatting(source,selection))
+        }
+      }),
+    ]})})
+    viewRef.current=editor
+    return ()=>{viewRef.current=null;editor.destroy()}
+  },[identity,path,apply,insert,format])
+  useLayoutEffect(()=>{
+    const view=viewRef.current;if(!view)return
+    if(view.state.doc.toString()!==content) view.dispatch({changes:difference(view.state.doc.toString(),content),annotations:externalChange.of(true)})
+  },[content])
+  useEffect(()=>{viewRef.current?.dispatch({effects:editable.current.reconfigure(EditorState.readOnly.of(blocked))})},[blocked])
+  useEffect(()=>{
+    const command=(event:Event)=>{
+      const detail=(event as CustomEvent<{command:string;text?:string}>).detail,view=viewRef.current
+      if(!view || !detail)return
+      if(detail.command==='undo')useEditorStore.getState().undo()
+      if(detail.command==='redo')useEditorStore.getState().redo()
+      if(['find','replace'].includes(detail.command))openSearchPanel(view)
+      if(detail.command==='insert' && detail.text)apply(view,guardedInsert(view.state.doc.toString(),view.state.selection.main,detail.text))
     }
-    document.addEventListener('selectionchange',changed)
-    return () => document.removeEventListener('selectionchange',changed)
-  },[])
-  const handleFormatToggle = useCallback((key:keyof FormatState) => { applyInlineFormat(key) },[])
-  const handleInlineMath = useCallback(() => { applyInlineFormat('math') },[])
-  const handleLink = useCallback(() => {
-    const url = window.prompt('Enter URL')
-    if (url) applyInlineFormat('link',url)
-  },[])
-  const handleParagraphStyleChange = useCallback((style:ParagraphStyle) => {
-    const current = blocksRef.current.find(block => block.id === focusedBlockId)
-    if (!current || !['paragraph','section'].includes(current.type)) return
-    const text = (current.data as {text?:string;title?:string}).text ?? (current.data as {title:string}).title
-    const levels = {'heading-1':'section','heading-2':'subsection','heading-3':'subsubsection'}
-    const replacement = style === 'normal' ? createBlock('paragraph',{text}) : createBlock('section',{level:levels[style],title:text})
-    if (current.source) replacement.source = {...current.source,data:''}
-    commit(blocksRef.current.map(block => block.id === current.id ? replacement : block)); focus(replacement.id)
-  },[focusedBlockId,commit,focus])
-  const handleListToggle = useCallback((kind:'itemize'|'enumerate') => {
-    const current = blocksRef.current.find(block => block.id === focusedBlockId)
-    if (current?.type === 'list') handleChange(current.id,{...(current.data as object),kind})
-    else {
-      const index = current ? blocksRef.current.indexOf(current) + 1 : blocksRef.current.length
-      insertBlocks(index,[createBlock('list',{kind,items:['']})])
+    window.addEventListener('editor:command',command);return()=>window.removeEventListener('editor:command',command)
+  },[apply])
+  const closeDialog=()=>{setDialog(null);viewRef.current?.focus()}
+  const applyDialog=(latex:string)=>{
+    const view=viewRef.current
+    if(!dialog || !view)return
+    if(dialog.identity!==documentIdentity() || dialog.snapshot!==view.state.doc.toString()) {setNotice('The document changed while this editor was open. Reopen it to apply your changes.');setDialog(null);return}
+    if(latex!==dialog.latex) {
+      const block=['table','image'].includes(dialog.kind) || (dialog.kind==='math' && /^(?:\\\[|\\begin|\$\$)/.test(latex))
+      if(dialog.from===dialog.to && block)latex=`${dialog.from && view.state.sliceDoc(dialog.from-1,dialog.from)!=='\n'?'\n\n':''}${latex}${view.state.sliceDoc(dialog.to,dialog.to+1)!=='\n'?'\n\n':''}`
+      apply(view,guardedInsert(view.state.doc.toString(),{from:dialog.from,to:dialog.to},latex))
     }
-  },[focusedBlockId,handleChange,insertBlocks])
-  const handleIndent = useCallback((direction:'in'|'out') => {
-    const current = blocksRef.current.find(block => block.id === focusedBlockId)
-    if (!current || current.boundary) return
-    if (current.type === 'section') {
-      const levels = ['section','subsection','subsubsection'], data = current.data as {level:string}
-      handleChange(current.id,{...data,level:levels[Math.max(0,Math.min(2,levels.indexOf(data.level) + (direction === 'in' ? 1 : -1)))]})
-      return
-    }
-    if (current.type === 'raw') {
-      const data = current.data as {latex:string}
-      if (direction === 'out' && /^\\begin\{quote\}\s*[\s\S]*\\end\{quote\}$/.test(data.latex)) {
-        const inner = data.latex.replace(/^\\begin\{quote\}\s*/, '').replace(/\s*\\end\{quote\}$/, '')
-        const parsed = parseLaTeXToBlocks(inner)
-        const index = blocksRef.current.indexOf(current), next = [...blocksRef.current]
-        next.splice(index,1,...parsed); commit(next); if (parsed[0]) focus(parsed[0].id)
-      }
-      return
-    }
-    if (direction === 'in') {
-      const replacement = createBlock('raw',{latex:`\\begin{quote}\n${getPlugin(current.type).toLaTeX(current.data)}\n\\end{quote}`})
-      if (current.source) replacement.source = {...current.source,data:''}
-      commit(blocksRef.current.map(block => block.id === current.id ? replacement : block)); focus(replacement.id)
-    }
-  },[focusedBlockId,handleChange,commit,focus])
-
-  useEffect(() => {
-    const command = (event:Event) => {
-      const detail = (event as CustomEvent<{command:string;text?:string}>).detail
-      if (!detail) return
-      if (detail.command === 'undo') undo()
-      if (detail.command === 'redo') redo()
-      if (detail.command === 'find' || detail.command === 'replace') setSearchMode(detail.command)
-      if (detail.command === 'insert' && detail.text) {
-        const index = blocksRef.current.findIndex(block => block.id === focusedBlockId)
-        const additions = parseLaTeXToBlocks(detail.text).map(block => createBlock(block.type,block.data))
-        insertBlocks(index < 0 ? blocksRef.current.length : index + 1,additions)
-      }
-    }
-    window.addEventListener('editor:command',command)
-    return () => window.removeEventListener('editor:command',command)
-  },[undo,redo,focusedBlockId,insertBlocks])
-  useEffect(() => { if (searchMode) searchRef.current?.focus() },[searchMode])
-  const replaceAll = () => { if (query) commit(parseLaTeXToBlocks(sourceRef.current.split(query).join(replacement))) }
-  const positions: number[] = []
-  if (query) {
-    let at = latex.indexOf(query)
-    while (at >= 0) { positions.push(at); at = latex.indexOf(query,at + query.length) }
+    closeDialog()
   }
-  const matches = positions.length
-  const selectedIndex = matches ? searchIndex % matches : 0
-  const replaceMatch = () => {
-    const at = positions[selectedIndex]
-    if (at === undefined) return
-    commit(parseLaTeXToBlocks(latex.slice(0,at) + replacement + latex.slice(at + query.length)))
-  }
-  const selectedPosition = positions[selectedIndex] ?? -1
-  useEffect(() => {
-    const elements = rootRef.current?.querySelectorAll<HTMLElement>('[data-block-id]')
-    elements?.forEach(element => { element.style.outline = '' })
-    if (!searchMode || selectedPosition < 0) return
-    let index = blocks.length - 1
-    for (let i=0;i<blocks.length;i++) {
-      if (blocksToLaTeX(blocks.slice(0,i+1)).length > selectedPosition) { index = i; break }
-    }
-    const element = elements?.[index]
-    if (element) { element.style.outline = '2px solid var(--primary)'; element.scrollIntoView?.({block:'nearest'}) }
-  },[blocks,selectedPosition,searchMode])
-  return (
-    <div ref={rootRef} className="h-full flex flex-col overflow-hidden bg-[var(--visual-editor-bg)]" onKeyDown={event => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
-        event.preventDefault(); event.stopPropagation(); if (event.shiftKey) redo(); else undo()
-      }
-    }}>
-      {/* Formatting toolbar */}
-      <FormattingToolbar
-        paragraphStyle={paragraphStyle}
-        format={format}
-        isVisual={true}
-        latexPanelOpen={showVisualLatexPanel}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onParagraphStyleChange={handleParagraphStyleChange}
-        onFormatToggle={handleFormatToggle}
-        onInlineMath={handleInlineMath}
-        onLink={handleLink}
-        onListToggle={handleListToggle}
-        onIndent={handleIndent}
-        onInsert={handleAdd}
-        onToggleLatexPanel={() => setShowVisualLatexPanel(!showVisualLatexPanel)}
-        onToggleView={() => setActiveEditorTab("text")}
-        onUndo={undo}
-        onRedo={redo}
-      />
-
-      {searchMode && <div className="flex gap-2 items-center p-2 border-b text-xs bg-[var(--visual-editor-toolbar)]">
-        <input ref={searchRef} aria-label="Find LaTeX" placeholder="Find in LaTeX" value={query} onChange={event => {setQuery(event.target.value);setSearchIndex(0)}} onKeyDown={event => {if (event.key === 'Enter') setSearchIndex(value => value + 1)}} className="border rounded px-2 py-1 bg-transparent" />
-        <button onClick={() => setSearchIndex(value => value + Math.max(matches - 1,0))} disabled={!matches}>Previous match</button>
-        <button onClick={() => setSearchIndex(value => value + 1)} disabled={!matches}>Next match</button>
-        {searchMode === 'replace' && <><input aria-label="Replacement" placeholder="Replace with" value={replacement} onChange={event => setReplacement(event.target.value)} className="border rounded px-2 py-1 bg-transparent" /><button onClick={replaceMatch} disabled={!matches}>Replace match</button><button onClick={replaceAll} disabled={!matches}>Replace all</button></>}
-        <span role="status">{matches ? selectedIndex + 1 : 0} of {matches}</span><button onClick={() => setSearchMode(null)} className="ml-auto">Close search</button>
-      </div>}
-      {/* Main workspace */}
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex overflow-hidden">
-          <BlockCanvas
-            blocks={blocks}
-            activeId={activeId}
-            activeBlock={activeBlock}
-            focusedBlockId={focusedBlockId}
-            onReorder={handleReorder}
-            onChange={handleChange}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            onDragStart={handleDragStart}
-            onSplit={handleSplit}
-            onMergeUp={handleMergeUp}
-            onInsertAfter={handleInsertAfter}
-            onInsertAt={handleInsertAt}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
-          />
-
-          {showVisualLatexPanel && (
-            <>
-              <div className="w-px bg-[var(--visual-editor-toolbar-border)] shrink-0" />
-              <div className="w-72 shrink-0 bg-[var(--visual-editor-toolbar)] transition-all duration-200 ease-in-out">
-                <LatexOutputPanel latex={latex} />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Status bar — Fable5 style, 34px */}
-      <div
-        className="shrink-0 h-[34px] flex items-center px-4 text-[11.5px]"
-        style={{
-          borderTop: "1px solid var(--visual-editor-toolbar-border)",
-          background: "var(--visual-editor-toolbar)",
-          color: "var(--visual-editor-text-dim)",
-        }}
-      >
-        <span className="font-medium" style={{ color: "var(--visual-editor-text)" }}>
-          {blocks.length} {blocks.length === 1 ? "block" : "blocks"}
-        </span>
-        <span className="mx-1.5">·</span>
-        <span>{blocks.reduce((n, b) => {
-          const text = (b.data as { text?: string })?.text || ""
-          return n + (text.match(/\S+/g)?.length || 0)
-        }, 0)} words</span>
-
-        <span className="mx-3" style={{ color: "var(--visual-editor-toolbar-border)" }}>|</span>
-
-        {/* Saved indicator */}
-        <span className="flex items-center gap-1.5">
-          <span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ background: "var(--saved)" }}
-          />
-          <span>{isSaving ? "Saving…" : isModified ? "Unsaved changes" : "Saved"}</span>
-        </span>
-
-        <span className="ml-auto">
-          Click a block to select · Drag handle to reorder · Hover between blocks to insert
-        </span>
-      </div>
-    </div>
-  )
+  return <div className="visual-source-editor h-full flex flex-col overflow-hidden" data-testid="visual-editor">
+    <div className="visual-source-modebar"><div className="flex items-center gap-1"><button type="button" data-testid="visual-toolbar-code-tab" onClick={()=>useEditorStore.getState().setActiveEditorTab('text')}><Code2 size={13}/>Code</button><button type="button" aria-pressed="true"><Eye size={13}/>Visual</button></div><button type="button" aria-pressed={latexPanel} onClick={()=>setLatexPanel(value=>!value)} title="Show LaTeX alongside the visual editor">{'{ }'} LaTeX</button></div>
+    <VisualToolbar formats={(Object.keys(formatting.formats) as InlineFormat[]).filter(key=>formatting.formats[key])} heading={formatting.heading} list={formatting.list} canUndo={canUndo} canRedo={canRedo} disabled={blocked} onFormat={format} onHeading={level=>{const view=viewRef.current;if(view)apply(view,setHeading(view.state.doc.toString(),bodySelection(view),level))}} onList={ordered=>{const view=viewRef.current;if(view)apply(view,toggleList(view.state.doc.toString(),bodySelection(view),ordered))}} onInsert={insert} onUndo={()=>useEditorStore.getState().undo()} onRedo={()=>useEditorStore.getState().redo()} onFind={()=>{if(viewRef.current)openSearchPanel(viewRef.current)}}/>
+    {notice && <div role="status" className="visual-source-notice">{notice}<button aria-label="Dismiss message" onClick={()=>setNotice('')}>×</button></div>}
+    {revealed && <div className="visual-source-notice">Editing LaTeX source<button onClick={()=>{viewRef.current?.dispatch({effects:revealSource.of(null)});setRevealed(false);viewRef.current?.focus()}}>Done</button></div>}
+    <div className="flex flex-1 min-h-0 overflow-hidden"><div ref={host} className="visual-source-host flex-1 min-w-0"/>{latexPanel && <div className="w-64 max-w-[45%] shrink-0 border-l overflow-hidden"><LatexOutputPanel latex={content}/></div>}</div>
+    <div className="visual-source-status"><span>{isSaving?'Saving…':isModified?'Unsaved changes':'Saved'}</span><span>LaTeX stays in sync</span></div>
+    <InsertDialog request={dialog} onApply={applyDialog} onClose={closeDialog}/>
+  </div>
 })

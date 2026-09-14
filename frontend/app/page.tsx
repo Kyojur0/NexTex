@@ -434,6 +434,7 @@ function EditorInner() {
   // Keyboard shortcuts - stable, only registered once
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
       const state = useEditorStore.getState()
       if (state.isNavigating || state.pendingDraft) return
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {

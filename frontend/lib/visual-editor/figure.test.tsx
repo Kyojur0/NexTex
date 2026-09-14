@@ -1,6 +1,12 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { VisualEditor } from '@/components/editor/visual-editor'
+import { figurePlugin, type FigureData } from './plugins/figure'
+import { parseLaTeXToBlocks } from './parser'
+function FigureHarness() {
+  const content=useEditorStore(state=>state.content)
+  const data=parseLaTeXToBlocks(content).find(block=>block.type==='figure')!.data as FigureData
+  return <figurePlugin.renderEditor block={{id:'figure',type:'figure',data}} isActive onChange={next=>useEditorStore.getState().setContent(figurePlugin.toLaTeX(next))} onFocus={()=>{}} onBlur={()=>{}}/>
+}
 import { useEditorStore } from '@/lib/store'
 import * as api from '@/lib/api'
 
@@ -8,13 +14,13 @@ beforeEach(() => { useEditorStore.setState({content:'\\begin{figure}[h]\n\\cente
 afterEach(() => vi.restoreAllMocks())
 describe('figure workspace assets', () => {
   it('previews saved asset paths from the active document directory', () => {
-    const {container} = render(<VisualEditor />)
+    const {container} = render(<FigureHarness />)
     expect(container.querySelector('img')).toHaveAttribute('src',api.getAssetUrl('project/existing.png'))
   })
   it('uploads an image to workspace assets and stores its relative LaTeX path', async () => {
     const upload = vi.spyOn(api,'uploadAsset').mockImplementation(async (path) => ({path}))
     useEditorStore.setState({refreshFiles:async () => {}})
-    const {container} = render(<VisualEditor />)
+    const {container} = render(<FigureHarness />)
     const file = new File(['image bytes'],'diagram.png',{type:'image/png'})
     fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[file]}})
     await waitFor(() => expect(useEditorStore.getState().content).toMatch(/\\includegraphics\[width=0.8\\textwidth\]\{assets\/[^}]+diagram\.png\}/))
@@ -25,7 +31,7 @@ describe('figure workspace assets', () => {
   it('uses the normalized image path returned by the server', async () => {
     const upload = vi.spyOn(api,'uploadAsset').mockResolvedValue({path:'project/assets/converted.png'})
     useEditorStore.setState({refreshFiles:async () => {}})
-    const {container} = render(<VisualEditor />)
+    const {container} = render(<FigureHarness />)
     fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['gif'],'image.gif',{type:'image/gif'})]}})
     await waitFor(() => expect(useEditorStore.getState().content).toContain('{assets/converted.png}'))
     upload.mockRestore()
@@ -34,7 +40,7 @@ describe('figure workspace assets', () => {
     let finish!: (result:{path:string}) => void
     const upload = vi.spyOn(api,'uploadAsset').mockImplementation(() => new Promise(resolve => {finish = resolve}))
     useEditorStore.setState({refreshFiles:async () => {}})
-    const {container} = render(<VisualEditor />)
+    const {container} = render(<FigureHarness />)
     fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['png'],'image.png',{type:'image/png'})]}})
     await waitFor(() => expect(finish).toBeDefined())
     const caption = container.querySelector<HTMLElement>('[data-latex-editor]')!
@@ -47,7 +53,7 @@ describe('figure workspace assets', () => {
     const finish: ((result:{path:string}) => void)[] = []
     vi.spyOn(api,'uploadAsset').mockImplementation(() => new Promise(resolve => {finish.push(resolve)}))
     useEditorStore.setState({refreshFiles:async () => {}})
-    const {container} = render(<VisualEditor />)
+    const {container} = render(<FigureHarness />)
     const input = container.querySelector('input[type=file]')!
     fireEvent.change(input,{target:{files:[new File(['png'],'first.png',{type:'image/png'})]}})
     await waitFor(() => expect(finish).toHaveLength(1))
@@ -58,8 +64,7 @@ describe('figure workspace assets', () => {
     expect(useEditorStore.getState().content).toContain('{assets/second.png}')
   })
   it('reflects width changes in the image preview', () => {
-    const {container} = render(<VisualEditor />)
-    fireEvent.click(container.querySelector('[data-testid="block-card"]')!)
+    const {container} = render(<FigureHarness />)
     fireEvent.change(container.querySelector('input[type=range]')!,{target:{value:'0.6'}})
     expect(container.querySelector('img')).toHaveStyle({width:'60%'})
   })

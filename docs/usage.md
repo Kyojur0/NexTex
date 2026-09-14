@@ -51,10 +51,11 @@ contracts and compiler behavior are documented in [backend/README.md](../backend
 - File menus provide blank documents, five templates, Open File, Save, and Save As.
   The file tree creates files/folders, renames them, and confirms deletion.
 - Code mode supports highlighting, indentation, find/replace, snippets, and undo/redo.
-  Visual mode edits headings, paragraphs, lists, equations, figures, tables and code.
+  Visual mode is a continuous writing surface with headings, formatting and lists.
+  Click equations, figures or tables to edit them; use the toolbar to insert new ones.
   Both modes share document source and undo history.
 - Visual round trips retain document boundaries, comments, preamble, and untouched
-  source. Unsupported constructs are shown as raw LaTeX blocks. Rich formatting is
+  source. Unsupported constructs remain editable LaTeX within the document. Rich formatting is
   stored as LaTeX; necessary formatting packages are added when used.
 - Figure uploads accept PNG/JPEG/GIF/WebP, up to 10 MiB and 40 million pixels.
   GIF/WebP are converted to a static PNG for TeX. Assets are stored next to the
@@ -74,13 +75,17 @@ contracts and compiler behavior are documented in [backend/README.md](../backend
 | --- | --- |
 | Cmd/Ctrl+S | Save (and build if enabled in Settings) |
 | Cmd/Ctrl+Shift+S | Save As |
-| Cmd/Ctrl+B | Build |
+| Cmd/Ctrl+B | Bold in the Visual document; Build elsewhere |
 | Cmd/Ctrl+N | New blank document |
 | Cmd/Ctrl+O | Open folder |
 | Cmd/Ctrl+Shift+O | Open file |
 | Cmd/Ctrl+Z / Shift+Z | Undo / redo |
-| Cmd/Ctrl+F / H | Find / replace in code mode |
+| Cmd/Ctrl+F / H | Find / replace |
 | Cmd/Ctrl+K | AI assistant |
+
+In Visual mode, Enter continues a list and a second Enter exits an empty final item.
+Use the LaTeX toggle for a source panel, or click Preamble to edit document setup.
+Advanced package-specific layouts remain source; the compiled PDF is the final layout.
 
 ## Optional AI
 

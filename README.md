@@ -4,7 +4,8 @@ A local LaTeX editor with visual editing, source code, and PDF preview in one wo
 
 ![LaTeX source editor and compiled PDF](docs/images/editor-code.png)
 
-- Switch between code and visual editing, with shared undo/redo.
+- Write continuously in Visual mode with formatting, equations, images, and tables.
+- Switch to LaTeX source anytime, with shared undo/redo.
 - Build PDFs with pdfLaTeX, XeLaTeX, or LuaLaTeX.
 - Manage local files, start from templates, and recover drafts or earlier versions.
 - Review AI suggestions before applying them. AI is optional and needs your own provider.

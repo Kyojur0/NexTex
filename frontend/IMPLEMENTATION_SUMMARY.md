@@ -28,16 +28,19 @@ operations; `lib/templates.ts` contains standalone compilable templates.
 
 `enhanced-code-editor.tsx` owns caret/selection and code input behavior, while source
 history belongs to the store. `find-replace.tsx` provides literal search/replacement.
-`visual-editor.tsx` manages source-backed blocks, selection, formatting, and insertion;
-`block-canvas.tsx` provides drag/drop and `block-renderer.tsx` supplies block controls.
+`visual-editor.tsx` owns a continuous CodeMirror 6 surface whose document is the original
+LaTeX. `lib/visual-source/scanner.ts` supplies conservative source ranges for styled
+text, hidden delimiters, and preview widgets. `decorations.ts` uses direct state-field
+decorations and atomic ranges. Unsupported syntax remains editable source.
 
-`lib/visual-editor/parser.ts` recognizes supported LaTeX structures and preserves raw
-source for unsupported syntax. Blocks retain their original lexeme and a semantic
-fingerprint. The serializer reuses unchanged lexemes, including whitespace and line
-endings, and generates changed blocks through plugins. Document boundaries are
-protected. Plugins cover paragraphs, headings, lists, math, figures, tables, code, and
-raw LaTeX. Hook-using editors are proper React components. Inline formatting maps
-between safe DOM formatting and LaTeX, preserving nested constructs when unsupported.
+`commands.ts` creates local formatting, heading and list transactions; `edit-guard.ts`
+protects concealed formatting and document boundaries when visible selections cross
+them. Store changes from undo, mode switches and MCP map into the existing editor.
+The toolbar and insert dialogs live in `components/editor/visual-source/`.
+
+The earlier block parser and figure/table plugins are retained for structured dialogs
+and previews. They serialize only the explicitly edited construct. Untouched source
+is never reconstructed from the visual DOM. Dialog application rejects stale source.
 
 Figures upload through the backend, store returned document-relative asset paths, and
 avoid overwriting newer edits when an upload resolves. Table data tracks spanning and
