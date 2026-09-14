@@ -61,6 +61,19 @@ test('continuous typing preserves macros and source through save and mode switch
   await build(page)
 })
 
+test('separates normal content blocks while preserving typing and list grouping',async({page,request})=>{
+  const original=wrap('First paragraph.\n\nSecond $x$ paragraph.\n\\[\ny = x^2\n\\]\n\\textit{Styled paragraph.}\n\\begin{enumerate}\n\\item First point\n\\item Second point\n\\end{enumerate}\nAfter list.\n\\begin{table}\n\\begin{tabular}{lc}\nA & B \\\\\n\\end{tabular}\n\\end{table}\n\\[\nz = 2\n\\]')
+  await createDocument(page,request,original)
+  await page.getByTitle('Show LaTeX alongside the visual editor').click()
+  const editor=page.getByTestId('visual-document')
+  await expect(editor.locator('.visual-block-divider')).toHaveCount(7)
+  await expect(editor.locator('.visual-heading')).toHaveCount(0)
+  await selectWord(editor,'After list.');await page.keyboard.type('Edited after the list.')
+  await page.getByTestId('visual-toolbar-code-tab').click()
+  await expect(page.getByTestId('latex-source')).toHaveValue(original.replace('After list.','Edited after the list.'))
+  await build(page)
+})
+
 test('typing with bold on and off retains prior formatting and allows partial removal',async({page,request})=>{
   await createDocument(page,request,wrap('Typing'))
   const editor=page.getByTestId('visual-document')

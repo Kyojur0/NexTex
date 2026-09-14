@@ -373,10 +373,11 @@
 .visual-source-host .cm-scroller { overflow:auto; line-height:1.8; font-family:inherit; }
 .visual-source-host .cm-content { padding:24px clamp(20px,5%,70px) 100px; caret-color:var(--visual-editor-text); }
 .visual-source-host .cm-line { padding:0; }
-.visual-source-host .cm-line:has(.visual-heading) {
-  padding-top:28px;
-  padding-bottom:4px;
-  background:linear-gradient(90deg,color-mix(in srgb,var(--visual-editor-text) 55%,transparent) 0%,color-mix(in srgb,var(--visual-editor-text) 55%,transparent) 85%,transparent) left 10px / 100% 2px no-repeat;
+.visual-block-divider {
+  height:20px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--visual-editor-text) 45%,transparent) 0%,color-mix(in srgb,var(--visual-editor-text) 45%,transparent) 85%,transparent) left center / 100% 1px no-repeat;
+  pointer-events:none;
+  user-select:none;
 }
 .visual-source-host .cm-selectionBackground { background:var(--visual-editor-tool-active) !important; }
 .visual-source-host .cm-cursor { border-left-color:var(--visual-editor-text); }

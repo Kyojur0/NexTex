@@ -52,6 +52,7 @@ contracts and compiler behavior are documented in [backend/README.md](../backend
   The file tree creates files/folders, renames them, and confirms deletion.
 - Code mode supports highlighting, indentation, find/replace, snippets, and undo/redo.
   Visual mode is a continuous writing surface with headings, formatting and lists.
+  Dividers separate paragraphs, display equations, lists and tables while you write.
   Click equations, figures or tables to edit them; use the toolbar to insert new ones.
   Both modes share document source and undo history.
 - Visual round trips retain document boundaries, comments, preamble, and untouched

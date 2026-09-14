@@ -16,6 +16,14 @@ beforeEach(()=>{
 afterEach(cleanup)
 
 describe('continuous visual document',()=>{
+  it('separates paragraphs, display equations, lists and tables without changing source',()=>{
+    const original=wrap('First paragraph.\n\nSecond $x$ paragraph.\n\\[\ny = x^2\n\\]\n\\textit{Styled paragraph.}\n\\begin{enumerate}\n\\item First\n\\item Second\n\\end{enumerate}\nAfter list.\n\\begin{table}\n\\begin{tabular}{lc}\nA & B \\\\\n\\end{tabular}\n\\end{table}\n\\[\nz = 2\n\\]')
+    useEditorStore.setState({content:original})
+    const result=render(<VisualEditor/>)
+    expect(result.container.querySelectorAll('.visual-block-divider')).toHaveLength(7)
+    expect(useEditorStore.getState().content).toBe(original)
+    expect(view(result.container).state.doc.toString()).toBe(original)
+  })
   it('publishes typing synchronously and preserves source outside the edit',()=>{
     const original=wrap('An \\emph{original} phrase.\n\nSecond paragraph.\n\\custom{untouched}')
     useEditorStore.setState({content:original})

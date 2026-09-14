@@ -2,6 +2,7 @@ import { StateEffect, StateField, type Extension, type Range } from '@codemirror
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
 import katex from 'katex'
 import { scanVisualSource } from './scanner'
+import { getVisualBlockStarts } from './block-boundaries'
 import type { VisualSpan } from './types'
 import { parseLaTeXToBlocks } from '../visual-editor/parser'
 import { renderInlineLaTeX } from '../visual-editor/inline'
@@ -14,6 +15,19 @@ export interface VisualDecorationOptions {
   assetDirectory: string
   activate: (span: VisualSpan, view: EditorView) => void
 }
+
+class BlockDividerWidget extends WidgetType {
+  eq() { return true }
+  get estimatedHeight() { return 20 }
+  toDOM() {
+    const element=document.createElement('div')
+    element.className='visual-block-divider'
+    element.setAttribute('aria-hidden','true')
+    return element
+  }
+  ignoreEvent() { return true }
+}
+const blockDivider = new BlockDividerWidget()
 
 class PreviewWidget extends WidgetType {
   constructor(readonly span: VisualSpan, readonly source: string, readonly options: VisualDecorationOptions) { super() }
@@ -82,6 +96,10 @@ export interface VisualFieldValue { decorations: DecorationSet; atomic: Decorati
 export function visualDecorations(options: VisualDecorationOptions) {
   const build = (source:string, revealed:VisualFieldValue['revealed']):VisualFieldValue => {
     const spans = scanVisualSource(source), ranges:Range<Decoration>[] = [], atomic:Range<Decoration>[] = []
+    for (const from of getVisualBlockStarts(source,spans)) {
+      if (revealed && from >= revealed.from && from < revealed.to) continue
+      ranges.push(Decoration.widget({widget:blockDivider,block:true,side:-1}).range(from))
+    }
     for (const span of spans) {
       if (span.from >= span.to || span.from < 0 || span.to > source.length) continue
       if (revealed && span.from < revealed.to && span.to > revealed.from) continue
