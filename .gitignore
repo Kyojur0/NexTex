@@ -1,5 +1,7 @@
 # macOS
 .DS_Store
+*.dmg
+Falbe 5 Output/
 
 # Python
 __pycache__/
