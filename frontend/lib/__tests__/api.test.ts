@@ -68,7 +68,7 @@ describe('API client', () => {
   })
 
   it('writeFile calls POST', async () => {
-    ;(global.fetch as any).mockResolvedValueOnce({ ok: true })
+    ;(global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 'r1' }) })
     await api.writeFile('a.tex', 'content')
     expect(global.fetch).toHaveBeenCalledWith(
       `${API_BASE}/api/files/write`,

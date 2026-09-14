@@ -23,11 +23,23 @@ interface LogEntry {
 
 interface SmartTerminalProps {
   logs: LogEntry[]
+  diagnostics?: Diagnostic[]
   isBuilding: boolean
   isOpen: boolean
   onToggle: () => void
-  onJumpToLine: (line: number) => void
+  onJumpToLine: (line: number, file?: string) => void
 }
+
+interface Diagnostic {
+  line: number
+  message: string
+  context: string
+  severity: string
+  file?: string
+}
+
+const EMPTY_DIAGNOSTICS: Diagnostic[] = []
+const issueMessage = (message: string) => message.replace(/^!\s*/, '').trim()
 
 type ActiveTab = "logs" | "issues"
 
@@ -108,8 +120,35 @@ const LogRow = memo(function LogRow({
   )
 })
 
+const DiagnosticRow = memo(function DiagnosticRow({ diagnostic, onJumpToLine }: {
+  diagnostic: Diagnostic
+  onJumpToLine: (line: number, file?: string) => void
+}) {
+  const isError = diagnostic.severity === 'error'
+  return (
+    <button
+      type="button"
+      onClick={() => onJumpToLine(diagnostic.line, diagnostic.file)}
+      className={cn(
+        "flex w-full gap-3 px-4 py-2 border-b border-border/20 text-left font-mono text-xs leading-relaxed hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
+        isError ? "bg-red-500/[0.03] text-red-600 dark:text-red-400" : "bg-yellow-500/[0.03] text-yellow-700 dark:text-yellow-400",
+      )}
+    >
+      {isError ? <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+      <span className="min-w-0 flex-1">
+        <span className="block break-words font-semibold underline underline-offset-2">
+          {diagnostic.file ? `${diagnostic.file}:${diagnostic.line}` : `Line ${diagnostic.line}`}
+        </span>
+        <span className="block break-words">{diagnostic.message}</span>
+        {diagnostic.context ? <code className="mt-0.5 block break-words whitespace-pre-wrap text-muted-foreground">{diagnostic.context}</code> : null}
+      </span>
+    </button>
+  )
+})
+
 export const SmartTerminal = memo(function SmartTerminal({
   logs,
+  diagnostics = EMPTY_DIAGNOSTICS,
   isBuilding,
   isOpen,
   onToggle,
@@ -123,16 +162,18 @@ export const SmartTerminal = memo(function SmartTerminal({
   const startYRef = useRef(0)
   const startHeightRef = useRef(0)
 
-  const errorCount = logs.filter(l => l.type === "error").length
-  const warningCount = logs.filter(l => l.type === "warning").length
-  const issueLogs = logs.filter(l => l.type === "error" || l.type === "warning")
+  const actionableDiagnostics = diagnostics.filter(d => d.line > 0 && (d.severity === 'error' || d.severity === 'warning'))
+  const mappedMessages = new Set(actionableDiagnostics.map(d => issueMessage(d.message)))
+  const issueLogs = logs.filter(l => (l.type === "error" || l.type === "warning") && !mappedMessages.has(issueMessage(l.message)))
+  const errorCount = actionableDiagnostics.filter(d => d.severity === 'error').length + issueLogs.filter(l => l.type === 'error').length
+  const warningCount = actionableDiagnostics.filter(d => d.severity === 'warning').length + issueLogs.filter(l => l.type === 'warning').length
   const hasSuccess = logs.some(l => l.type === "success")
 
   useEffect(() => {
     if (isOpen && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" })
     }
-  }, [logs, isOpen])
+  }, [logs, diagnostics, isOpen])
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -207,7 +248,7 @@ export const SmartTerminal = memo(function SmartTerminal({
         </div>
 
         <div className="flex items-center gap-3">
-          {!isBuilding && logs.length > 0 && (
+          {!isBuilding && (logs.length > 0 || actionableDiagnostics.length > 0) && (
             <div className="flex items-center gap-3 text-[11px]">
               {errorCount > 0 && (
                 <span className="flex items-center gap-1 text-red-500">
@@ -241,7 +282,7 @@ export const SmartTerminal = memo(function SmartTerminal({
 
       {isOpen && (
         <div className="flex-1 overflow-y-auto scrollbar-thin bg-background/50">
-          {displayedLogs.length === 0 ? (
+          {displayedLogs.length === 0 && (activeTab !== 'issues' || actionableDiagnostics.length === 0) ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-6">
               {activeTab === "issues" ? (
                 <>
@@ -261,6 +302,9 @@ export const SmartTerminal = memo(function SmartTerminal({
             </div>
           ) : (
             <>
+              {activeTab === 'issues' ? actionableDiagnostics.map((diagnostic, i) => (
+                <DiagnosticRow key={`${diagnostic.file}:${diagnostic.line}:${i}`} diagnostic={diagnostic} onJumpToLine={onJumpToLine} />
+              )) : null}
               {displayedLogs.map((log, i) => (
                 <LogRow key={i} log={log} onJumpToLine={onJumpToLine} />
               ))}

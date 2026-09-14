@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState, useCallback } from "react"
+import { memo, useState, useCallback, useEffect, useRef } from "react"
 import {
   Dialog,
   DialogContent,
@@ -9,41 +9,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { FileText, Check } from "lucide-react"
+import { FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const TEMPLATES = [
-  {
-    id: "minimal",
-    name: "Minimal",
-    description: "Clean and simple, perfect for tech roles",
-    icon: "📄",
-  },
-  {
-    id: "professional",
-    name: "Professional",
-    description: "Traditional format for corporate positions",
-    icon: "💼",
-  },
-  {
-    id: "modern",
-    name: "Modern",
-    description: "Contemporary design with elegant typography",
-    icon: "✨",
-  },
-  {
-    id: "academic",
-    name: "Academic",
-    description: "Structured format for research positions",
-    icon: "🎓",
-  },
-  {
-    id: "creative",
-    name: "Creative",
-    description: "Unique layout for design and creative roles",
-    icon: "🎨",
-  },
-]
+import { TEMPLATES } from "@/lib/templates"
+import { useEditorStore } from "@/lib/store"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface TemplateModalProps {
   open: boolean
@@ -55,22 +26,54 @@ export const TemplateModal = memo(function TemplateModal({
   onOpenChange,
 }: TemplateModalProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+  const [fileName, setFileName] = useState('resume.tex')
+  const [error, setError] = useState('')
+  const [creating, setCreating] = useState(false)
+  const creatingRef = useRef(false)
+  const createDocument = useEditorStore((s) => s.createDocument)
+
+  useEffect(() => {
+    if (open) {
+      setSelectedTemplate(null)
+      setFileName('resume.tex')
+      setError('')
+    }
+  }, [open])
 
   const handleSelect = useCallback((templateId: string) => {
     setSelectedTemplate(templateId)
   }, [])
 
-  const handleCreate = useCallback(() => {
-    if (selectedTemplate) {
-      // In real app: create new project from template
+  const handleCreate = useCallback(async () => {
+    const template = TEMPLATES.find((item) => item.id === selectedTemplate)
+    if (!template || creatingRef.current) return
+    const name = fileName.trim()
+    if (!name || /[\\/\x00-\x1f]/.test(name) || name.startsWith('.')) {
+      setError('Enter a file name without folders, such as resume.tex.')
+      return
+    }
+    if (!name.toLowerCase().endsWith('.tex')) {
+      setError('The file name must end in .tex.')
+      return
+    }
+    creatingRef.current = true
+    setCreating(true)
+    setError('')
+    try {
+      await createDocument(name, template.content)
       onOpenChange(false)
       setSelectedTemplate(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the document.')
+    } finally {
+      creatingRef.current = false
+      setCreating(false)
     }
-  }, [selectedTemplate, onOpenChange])
+  }, [selectedTemplate, fileName, createDocument, onOpenChange])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Dialog open={open} onOpenChange={(next) => { if (!creatingRef.current) onOpenChange(next) }}>
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Choose a Resume Template</DialogTitle>
           <DialogDescription>
@@ -82,6 +85,9 @@ export const TemplateModal = memo(function TemplateModal({
           {TEMPLATES.map((template) => (
             <button
               key={template.id}
+              type="button"
+              aria-pressed={selectedTemplate === template.id}
+              disabled={creating}
               onClick={() => handleSelect(template.id)}
               className={cn(
                 "p-4 rounded-lg border-2 transition-all text-left",
@@ -99,16 +105,25 @@ export const TemplateModal = memo(function TemplateModal({
           ))}
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="template-file-name">File name</Label>
+          <Input id="template-file-name" value={fileName} disabled={creating}
+            onChange={(e) => setFileName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleCreate() } }} />
+          <p className="text-xs text-muted-foreground">Creates a .tex file in your current workspace.</p>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        </div>
+
         <div className="flex justify-end gap-2 border-t pt-4 mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" disabled={creating} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={!selectedTemplate}
+            disabled={!selectedTemplate || creating}
           >
             <FileText className="mr-2 h-4 w-4" />
-            Create from Template
+            {creating ? 'Creating…' : 'Create from Template'}
           </Button>
         </div>
       </DialogContent>

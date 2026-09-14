@@ -6,6 +6,7 @@ import { listPlugin } from "./list"
 import { figurePlugin } from "./figure"
 import { tablePlugin } from "./table"
 import { codePlugin } from "./code"
+import { rawPlugin } from "./raw"
 
 export * from "./paragraph"
 export * from "./section"
@@ -23,6 +24,7 @@ const registry = new Map<BlockType, BlockPlugin<unknown>>([
   [figurePlugin.type, figurePlugin as BlockPlugin<unknown>],
   [tablePlugin.type, tablePlugin as BlockPlugin<unknown>],
   [codePlugin.type, codePlugin as BlockPlugin<unknown>],
+  [rawPlugin.type, rawPlugin as BlockPlugin<unknown>],
 ])
 
 export function getPlugin<T>(type: BlockType): BlockPlugin<T> {

@@ -1,4 +1,46 @@
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); this.name = 'ApiError' }
+}
+
+async function checkResponse(res: Response): Promise<void> {
+  if (res.ok) return;
+  const data = await res.json().catch(() => ({}));
+  const detail = data.detail;
+  const message = typeof detail === 'string' ? detail : detail?.message;
+  throw new ApiError(message || data.error || `Request failed (${res.status} ${res.statusText})`, res.status);
+}
+
+export interface DocumentData { content: string; revision: string }
+
+export async function readDocument(path: string): Promise<DocumentData> {
+  const res = await fetch(`${API_BASE}/api/files/read?path=${encodeURIComponent(path)}`);
+  await checkResponse(res);
+  return res.json();
+}
+
+export async function createDocumentFile(path: string, content: string): Promise<{ revision: string }> {
+  const res = await fetch(`${API_BASE}/api/files/create`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, type: 'file', content }),
+  });
+  await checkResponse(res);
+  return res.json();
+}
+
+export async function uploadAsset(path: string, base64: string): Promise<{ path: string }> {
+  const res = await fetch(`${API_BASE}/api/assets/upload`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content_base64: base64 }),
+  });
+  await checkResponse(res);
+  return res.json();
+}
+
+export function getAssetUrl(path: string): string {
+  return `${API_BASE}/api/assets?path=${encodeURIComponent(path)}`;
+}
 
 export interface FileNode {
   id: string;
@@ -18,7 +60,7 @@ export interface CompileResult {
   build_id: string;
   success: boolean;
   logs: Array<{ type: string; message: string }>;
-  error_lines: Array<{ line: number; message: string; context: string; severity: string }>;
+  error_lines: Array<{ line: number; message: string; context: string; severity: string; file?: string }>;
   pdf_available: boolean;
   pdf_url: string | null;
   build_dir: string | null;
@@ -70,13 +112,14 @@ export async function readFile(path: string): Promise<string> {
   return data.content;
 }
 
-export async function writeFile(path: string, content: string): Promise<void> {
+export async function writeFile(path: string, content: string, expectedRevision?: string | null): Promise<{ revision: string }> {
   const res = await fetch(`${API_BASE}/api/files/write`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, content }),
+    body: JSON.stringify({ path, content, ...(expectedRevision != null ? { expected_revision: expectedRevision } : {}) }),
   });
-  if (!res.ok) throw new Error(`Failed to write file: ${res.statusText}`);
+  await checkResponse(res);
+  return res.json();
 }
 
 export async function createItem(path: string, type: "file" | "folder"): Promise<void> {
@@ -97,7 +140,7 @@ export async function renameItem(oldPath: string, newPath: string): Promise<void
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ old_path: oldPath, new_path: newPath }),
   });
-  if (!res.ok) throw new Error(`Failed to rename: ${res.statusText}`);
+  await checkResponse(res);
 }
 
 export async function deleteItem(path: string): Promise<void> {
@@ -106,7 +149,7 @@ export async function deleteItem(path: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
   });
-  if (!res.ok) throw new Error(`Failed to delete: ${res.statusText}`);
+  await checkResponse(res);
 }
 
 // ---------------------------------------------------------------------------

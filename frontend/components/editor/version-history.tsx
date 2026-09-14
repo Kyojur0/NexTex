@@ -7,7 +7,6 @@ import {
   Star,
   X,
   RotateCcw,
-  Check,
   Plus,
   Trash2,
 } from "lucide-react"
@@ -18,17 +17,22 @@ import {
   getVersionsForFile,
   updateVersion,
   deleteVersion,
-  pruneOldAutoVersions,
   formatRelativeTime,
 } from "@/lib/version-db"
 import { useEditorStore } from "@/lib/store"
+import { documentKey } from '@/lib/drafts'
 
 interface VersionHistoryProps {
   onClose: () => void
 }
 
+const historyError = () => useEditorStore.getState().setLastError('Could not update version history. Browser storage may be unavailable; disk saves still work.')
+
 export const VersionHistory = memo(function VersionHistory({ onClose }: VersionHistoryProps) {
-  const { activeFileId, content, setContent, setIsModified } = useEditorStore()
+  const { activeFilePath, workspaceRoot, content, setContent } = useEditorStore()
+  const activeFileId = activeFilePath ? documentKey(workspaceRoot, activeFilePath) : null
+  const activeIdRef = useRef(activeFileId)
+  activeIdRef.current = activeFileId
   const [versions, setVersions] = useState<Version[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [previewVersion, setPreviewVersion] = useState<Version | null>(null)
@@ -37,37 +41,24 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
   const editInputRef = useRef<HTMLInputElement>(null)
 
   const loadVersions = useCallback(async () => {
-    if (!activeFileId) return
+    if (!activeFileId) { setVersions([]); setIsLoading(false); return }
     setIsLoading(true)
     try {
       const vs = await getVersionsForFile(activeFileId)
-      setVersions(vs)
+      if (activeIdRef.current === activeFileId) setVersions(vs)
+    } catch {
+      useEditorStore.getState().setLastError('Could not read version history. Browser storage may be unavailable.')
     } finally {
-      setIsLoading(false)
+      if (activeIdRef.current === activeFileId) setIsLoading(false)
     }
   }, [activeFileId])
 
   useEffect(() => {
+    setPreviewVersion(null)
     loadVersions()
+    window.addEventListener('nextex:versions-updated', loadVersions)
+    return () => window.removeEventListener('nextex:versions-updated', loadVersions)
   }, [loadVersions])
-
-  // Auto-save a version every 2 minutes if content changes
-  useEffect(() => {
-    if (!activeFileId || !content) return
-    const timer = setTimeout(async () => {
-      await saveVersion({
-        fileId: activeFileId,
-        content,
-        label: "Auto-saved",
-        isStarred: false,
-        isAuto: true,
-        createdAt: Date.now(),
-      })
-      await pruneOldAutoVersions(activeFileId)
-      loadVersions()
-    }, 2 * 60 * 1000)
-    return () => clearTimeout(timer)
-  }, [content, activeFileId, loadVersions])
 
   const handleSaveNow = useCallback(async () => {
     if (!activeFileId) return
@@ -110,11 +101,10 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
   }, [editingId, editingLabel, loadVersions])
 
   const handleRestore = useCallback(() => {
-    if (!previewVersion) return
+    if (!previewVersion || previewVersion.fileId !== activeIdRef.current) return
     setContent(previewVersion.content)
-    setIsModified(true)
     setPreviewVersion(null)
-  }, [previewVersion, setContent, setIsModified])
+  }, [previewVersion, setContent])
 
   const handlePreview = useCallback((version: Version) => {
     setPreviewVersion(prev => prev?.id === version.id ? null : version)
@@ -133,13 +123,13 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
             variant="ghost"
             size="sm"
             className="h-6 px-2 text-xs gap-1"
-            onClick={handleSaveNow}
+            onClick={() => { void handleSaveNow().catch(historyError) }}
             title="Save snapshot now"
           >
             <Plus className="h-3 w-3" />
             Save now
           </Button>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label="Close version history">
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -171,7 +161,7 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
               <p className="text-xs font-medium text-muted-foreground">No history yet</p>
               <p className="text-xs text-muted-foreground/60 mt-1">Versions auto-save every 2 minutes, or save manually.</p>
             </div>
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={handleSaveNow}>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => { void handleSaveNow().catch(historyError) }}>
               <Plus className="h-3 w-3" /> Save first snapshot
             </Button>
           </div>
@@ -214,9 +204,9 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
                         ref={editInputRef}
                         value={editingLabel}
                         onChange={e => setEditingLabel(e.target.value)}
-                        onBlur={handleSaveRename}
+                        onBlur={() => { void handleSaveRename().catch(historyError) }}
                         onKeyDown={e => {
-                          if (e.key === "Enter") handleSaveRename()
+                          if (e.key === "Enter") void handleSaveRename().catch(historyError)
                           if (e.key === "Escape") setEditingId(null)
                         }}
                         onClick={e => e.stopPropagation()}
@@ -241,7 +231,7 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
                   {/* Actions (hover) */}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     <button
-                      onClick={(e) => handleToggleStar(version, e)}
+                      onClick={(e) => { void handleToggleStar(version, e).catch(historyError) }}
                       className={cn(
                         "w-6 h-6 flex items-center justify-center rounded hover:bg-muted transition-colors",
                         version.isStarred ? "text-primary" : "text-muted-foreground"
@@ -251,7 +241,7 @@ export const VersionHistory = memo(function VersionHistory({ onClose }: VersionH
                       <Star className={cn("h-3 w-3", version.isStarred && "fill-current")} />
                     </button>
                     <button
-                      onClick={(e) => handleDelete(version.id, e)}
+                      onClick={(e) => { void handleDelete(version.id, e).catch(historyError) }}
                       className="w-6 h-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title="Delete version"
                     >

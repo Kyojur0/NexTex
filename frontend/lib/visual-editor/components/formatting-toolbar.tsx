@@ -4,12 +4,11 @@ import { memo, useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import type { BlockType } from "../types"
 import {
-  Bold, Italic, Underline, Strikethrough,
-  Superscript, Subscript, Sigma, Code, Link,
+  Strikethrough,
+  Superscript, Subscript, Code, Link,
   List, ListOrdered, AlignLeft, AlignCenter,
-  PanelRight, Undo, Redo, ChevronDown,
-  Type, Heading1, Heading2, Heading3,
-  Table, Image, FileCode, Eye, Code2, Plus,
+  Undo, Redo, ChevronDown,
+  Eye, Code2, Plus,
 } from "lucide-react"
 
 export type ParagraphStyle = "normal" | "heading-1" | "heading-2" | "heading-3"
@@ -74,10 +73,11 @@ const TBtn = memo(function TBtn({
     <button
       type="button"
       onClick={onClick}
+      onMouseDown={event => event.preventDefault()}
       disabled={disabled}
       title={title}
       className={cn(
-        "min-w-[27px] h-[27px] px-1.5 inline-flex items-center justify-center rounded-[5px]",
+        "shrink-0 min-w-[27px] h-[27px] px-1.5 inline-flex items-center justify-center rounded-[5px]",
         "text-[13px] transition-colors duration-100 select-none",
         "text-[var(--visual-editor-text)]",
         active  && "bg-[var(--visual-editor-tool-active)] text-[var(--visual-editor-tool-active-text)]",
@@ -117,6 +117,7 @@ const StylePicker = memo(function StylePicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onMouseDown={event => event.preventDefault()}
         className={cn(
           "h-[28px] px-2.5 inline-flex items-center gap-1.5 rounded-[6px]",
           "text-[12.5px] font-medium text-[var(--visual-editor-text)]",
@@ -166,6 +167,7 @@ const INSERT_ITEMS: { type: BlockType; label: string; hint: string }[] = [
   { type: "list",      label: "Bullet list",     hint: "itemize" },
   { type: "table",     label: "Table",           hint: "tabular" },
   { type: "code",      label: "Code block",      hint: "verbatim" },
+  { type: "raw",       label: "LaTeX source",    hint: "source" },
 ]
 
 const InsertBtn = memo(function InsertBtn({ onInsert }: { onInsert: (t: BlockType) => void }) {
@@ -237,7 +239,7 @@ export const FormattingToolbar = memo(function FormattingToolbar({
   return (
     <div
       className={cn(
-        "shrink-0 h-[46px] flex items-center gap-0.5 px-3.5 select-none",
+        "shrink-0 min-h-[46px] flex flex-wrap items-center gap-x-0.5 gap-y-1 px-3.5 py-2 select-none",
         "border-b border-[var(--visual-editor-toolbar-border)]",
         "bg-[var(--visual-editor-toolbar)] transition-colors",
       )}
@@ -287,6 +289,9 @@ export const FormattingToolbar = memo(function FormattingToolbar({
       <TSep />
 
       {/* Lists */}
+      <TBtn active={format.superscript} onClick={() => onFormatToggle("superscript")} title="Superscript"><Superscript className="h-3.5 w-3.5" /></TBtn>
+      <TBtn active={format.subscript} onClick={() => onFormatToggle("subscript")} title="Subscript"><Subscript className="h-3.5 w-3.5" /></TBtn>
+      <TSep />
       <TBtn onClick={() => onListToggle("itemize")} title="Bullet list">
         <List className="h-3.5 w-3.5" />
       </TBtn>
@@ -327,7 +332,7 @@ export const FormattingToolbar = memo(function FormattingToolbar({
 
       {/* Code / Visual toggle */}
       <div className={cn(
-        "flex items-center rounded-[6px] border border-[var(--visual-editor-toolbar-border)] overflow-hidden mr-1.5",
+        "shrink-0 flex items-center rounded-[6px] border border-[var(--visual-editor-toolbar-border)] overflow-hidden mr-1.5",
       )}>
         <button
           type="button"
@@ -364,7 +369,7 @@ export const FormattingToolbar = memo(function FormattingToolbar({
         onClick={onToggleLatexPanel}
         title={latexPanelOpen ? "Hide LaTeX panel" : "Show LaTeX panel"}
         className={cn(
-          "h-[28px] px-2.5 flex items-center gap-1.5 rounded-[6px]",
+          "shrink-0 h-[28px] px-2.5 flex items-center gap-1.5 rounded-[6px]",
           "border transition-colors text-[11px] font-mono",
           latexPanelOpen
             ? "border-[rgba(196,69,40,0.4)] bg-[var(--visual-editor-tool-active)] text-[var(--visual-editor-tool-active-text)] font-semibold"

@@ -1,7 +1,7 @@
 "use client"
 
-import { memo, useCallback } from "react"
-import { useEditorStore } from "@/lib/store"
+import { memo, useCallback, useState, useEffect } from "react"
+import { useEditorStore, type EditorSettings } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 interface AdvancedSettingsProps {
@@ -42,6 +43,8 @@ const ColorPaletteSwatch = memo(function ColorPaletteSwatch({
   return (
     <button
       onClick={onClick}
+      aria-pressed={selected}
+      data-palette={value}
       className={cn(
         "flex flex-col gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer bg-card/50 hover:bg-card",
         selected ? "border-primary shadow-elevated" : "border-border/60 hover:border-border"
@@ -68,6 +71,21 @@ export const AdvancedSettings = memo(function AdvancedSettings({
 }: AdvancedSettingsProps) {
   const settings = useEditorStore((s) => s.settings)
   const setSettings = useEditorStore((s) => s.setSettings)
+  const [aiStatus, setAIStatus] = useState<{ configured: boolean; message: string } | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    setAIStatus(null)
+    fetch('/api/ai/suggest', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Configuration unavailable')
+        const data = await response.json()
+        if (typeof data.configured !== 'boolean' || typeof data.message !== 'string') throw new Error('Invalid configuration')
+        setAIStatus(data)
+      })
+      .catch(() => { if (!controller.signal.aborted) setAIStatus({ configured: false, message: 'Could not check AI configuration. Restart the frontend and reopen Settings.' }) })
+    return () => controller.abort()
+  }, [open])
 
   const handleFontSizeChange = useCallback(
     (value: string) => {
@@ -85,14 +103,14 @@ export const AdvancedSettings = memo(function AdvancedSettings({
 
   const handleCompilerChange = useCallback(
     (value: string) => {
-      setSettings({ compiler: value as any })
+      setSettings({ compiler: value as EditorSettings['compiler'] })
     },
     [setSettings]
   )
 
   const handlePaletteChange = useCallback(
     (palette: string) => {
-      setSettings({ colorPalette: palette as any })
+      setSettings({ colorPalette: palette as EditorSettings['colorPalette'] })
     },
     [setSettings]
   )
@@ -149,7 +167,7 @@ export const AdvancedSettings = memo(function AdvancedSettings({
             <p className="text-xs text-muted-foreground">
               Choose a color scheme. Light/Dark modes work with each palette.
             </p>
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {palettes.map((palette) => (
                 <ColorPaletteSwatch
                   key={palette.value}
@@ -226,11 +244,14 @@ export const AdvancedSettings = memo(function AdvancedSettings({
           <div className="space-y-4 bg-card/40 border border-border/40 rounded-2xl p-4">
             <h3 className="text-sm font-semibold">AI Assistant</h3>
             <p className="text-xs text-muted-foreground">
-              Choose the model powering the AI Spotlight (Cmd+K). Use the Vercel AI Gateway models below.
+              Choose a model available through your configured AI provider. Custom IDs support local OpenAI-compatible servers.
+            </p>
+            <p role="status" className={cn('text-xs rounded-lg p-3 break-words', aiStatus?.configured ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-foreground')}>
+              {aiStatus?.message ?? 'Checking AI configuration…'}
             </p>
 
             <div className="space-y-2">
-              <Label htmlFor="ai-provider">Provider</Label>
+              <Label htmlFor="ai-provider">Gateway preset</Label>
               <Select
                 value={settings.aiProvider}
                 onValueChange={(v) => {
@@ -240,7 +261,7 @@ export const AdvancedSettings = memo(function AdvancedSettings({
                     google: "google/gemini-2.0-flash",
                     xai: "xai/grok-3-mini",
                   }
-                  setSettings({ aiProvider: v as any, aiModel: defaults[v] || defaults.openai })
+                  setSettings({ aiProvider: v as EditorSettings['aiProvider'], aiModel: defaults[v] || defaults.openai })
                 }}
               >
                 <SelectTrigger id="ai-provider">
@@ -256,40 +277,11 @@ export const AdvancedSettings = memo(function AdvancedSettings({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ai-model">Model</Label>
-              <Select value={settings.aiModel} onValueChange={(v) => setSettings({ aiModel: v })}>
-                <SelectTrigger id="ai-model">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {settings.aiProvider === "openai" && (
-                    <>
-                      <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini (fast)</SelectItem>
-                      <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="openai/gpt-5">GPT-5</SelectItem>
-                    </>
-                  )}
-                  {settings.aiProvider === "anthropic" && (
-                    <>
-                      <SelectItem value="anthropic/claude-3-5-haiku">Claude 3.5 Haiku (fast)</SelectItem>
-                      <SelectItem value="anthropic/claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                      <SelectItem value="anthropic/claude-opus-4.6">Claude Opus 4.6</SelectItem>
-                    </>
-                  )}
-                  {settings.aiProvider === "google" && (
-                    <>
-                      <SelectItem value="google/gemini-2.0-flash">Gemini 2.0 Flash (fast)</SelectItem>
-                      <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                    </>
-                  )}
-                  {settings.aiProvider === "xai" && (
-                    <>
-                      <SelectItem value="xai/grok-3-mini">Grok 3 Mini (fast)</SelectItem>
-                      <SelectItem value="xai/grok-3">Grok 3</SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="ai-model">Model ID</Label>
+              <Input id="ai-model" value={settings.aiModel} maxLength={128}
+                onChange={(event) => setSettings({ aiModel: event.target.value })}
+                placeholder="provider/model or your local model ID" spellCheck={false} autoCapitalize="off" />
+              <p className="text-xs text-muted-foreground">Use the exact model ID supplied by your provider. API keys stay in the server environment.</p>
             </div>
           </div>
 
@@ -305,8 +297,8 @@ export const AdvancedSettings = memo(function AdvancedSettings({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pdflatex">pdfLaTeX</SelectItem>
-                  <SelectItem value="xetex">XeTeX</SelectItem>
-                  <SelectItem value="luatex">LuaTeX</SelectItem>
+                  <SelectItem value="xetex">XeLaTeX</SelectItem>
+                  <SelectItem value="luatex">LuaLaTeX</SelectItem>
                 </SelectContent>
               </Select>
             </div>

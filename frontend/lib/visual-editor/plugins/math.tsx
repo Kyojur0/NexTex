@@ -8,6 +8,7 @@ import type { BlockPlugin } from "../types"
 
 export interface MathData {
   latex: string
+  numbered?: boolean
 }
 
 export const mathPlugin: BlockPlugin<MathData> = {
@@ -17,7 +18,7 @@ export const mathPlugin: BlockPlugin<MathData> = {
   color: "#8b5cf6",
   defaultData: { latex: "E = mc^2" },
   isText: false,
-  renderEditor: ({ block, isActive, onChange, onFocus, onBlur }) => {
+  renderEditor: function MathEditor({ block, isActive, onChange, onFocus, onBlur }) {
     const previewRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -96,5 +97,5 @@ export const mathPlugin: BlockPlugin<MathData> = {
       </div>
     )
   },
-  toLaTeX: (data) => `\\begin{equation}\n${data.latex.trim()}\n\\end{equation}`,
+  toLaTeX: (data) => `\\begin{equation${data.numbered === false ? "*" : ""}}\n${data.latex.trim()}\n\\end{equation${data.numbered === false ? "*" : ""}}`,
 }

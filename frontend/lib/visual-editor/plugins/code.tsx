@@ -16,7 +16,7 @@ export const codePlugin: BlockPlugin<CodeData> = {
   color: "#f43f5e",
   defaultData: { language: "", code: "" },
   isText: false,
-  renderEditor: ({ block, isActive, onChange, onFocus, onBlur }) => {
+  renderEditor: function CodeEditor({ block, isActive, onChange, onFocus, onBlur }) {
     const handleChange = useCallback(
       (patch: Partial<CodeData>) => onChange({ ...block.data, ...patch }),
       [block.data, onChange]

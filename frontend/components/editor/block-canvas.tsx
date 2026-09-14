@@ -47,7 +47,6 @@ interface BlockCanvasProps {
 
 export const BlockCanvas = memo(function BlockCanvas({
   blocks,
-  activeId,
   activeBlock,
   focusedBlockId,
   onReorder,
@@ -89,6 +88,7 @@ export const BlockCanvas = memo(function BlockCanvas({
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => onDragStart(null)}
     >
       <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
         {/* Canvas wrapper — warm parchment background */}

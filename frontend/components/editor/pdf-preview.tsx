@@ -30,6 +30,8 @@ export const PdfPreview = memo(function PdfPreview({
   onToggleCollapse,
 }: PdfPreviewProps) {
   const [zoom, setZoom] = useState(100)
+  const [fitPage, setFitPage] = useState(true)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(false)
 
   const handleToggleDark = useCallback(() => {
@@ -37,23 +39,35 @@ export const PdfPreview = memo(function PdfPreview({
   }, [])
 
   const handleZoomOut = useCallback(() => {
+    setFitPage(false)
     setZoom((z) => Math.max(25, z - 25))
   }, [])
 
   const handleZoomIn = useCallback(() => {
+    setFitPage(false)
     setZoom((z) => Math.min(200, z + 25))
   }, [])
 
   const handleFitPage = useCallback(() => {
+    setFitPage(true)
     setZoom(100)
   }, [])
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!pdfUrl) return
-    const a = document.createElement("a")
-    a.href = pdfUrl
-    a.download = fileName
-    a.click()
+    setDownloadError(null)
+    try {
+      const response = await fetch(pdfUrl)
+      if (!response.ok) throw new Error('The PDF could not be downloaded. Build again and retry.')
+      const url = URL.createObjectURL(await response.blob())
+      const a = document.createElement("a")
+      a.href = url
+      a.download = fileName
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : 'PDF download failed.')
+    }
   }, [pdfUrl, fileName])
 
   if (collapsed) {
@@ -82,20 +96,20 @@ export const PdfPreview = memo(function PdfPreview({
           {pdfUrl ? fileName : "No preview available"}
         </span>
         <div className="flex items-center gap-0.5">
-          <ToolbarButton onClick={handleZoomOut} disabled={isBuilding || !pdfUrl}>
+          <ToolbarButton title="Zoom out" onClick={handleZoomOut} disabled={isBuilding || !pdfUrl}>
             <ZoomOut className="h-3.5 w-3.5" />
           </ToolbarButton>
           <span className="text-[11px] text-muted-foreground w-10 text-center tabular-nums">
-            {zoom}%
+            {fitPage ? 'Fit' : `${zoom}%`}
           </span>
-          <ToolbarButton onClick={handleZoomIn} disabled={isBuilding || !pdfUrl}>
+          <ToolbarButton title="Zoom in" onClick={handleZoomIn} disabled={isBuilding || !pdfUrl}>
             <ZoomIn className="h-3.5 w-3.5" />
           </ToolbarButton>
           <div className="w-px h-4 bg-border/60 mx-1" />
-          <ToolbarButton onClick={handleFitPage} disabled={isBuilding || !pdfUrl}>
+          <ToolbarButton title="Fit page" onClick={handleFitPage} disabled={isBuilding || !pdfUrl}>
             <Maximize2 className="h-3.5 w-3.5" />
           </ToolbarButton>
-          <ToolbarButton onClick={handleDownload} disabled={isBuilding || !pdfUrl}>
+          <ToolbarButton title="Download PDF" onClick={handleDownload} disabled={isBuilding || !pdfUrl}>
             <Download className="h-3.5 w-3.5" />
           </ToolbarButton>
           <div className="w-px h-4 bg-border/60 mx-1" />
@@ -116,6 +130,8 @@ export const PdfPreview = memo(function PdfPreview({
         </div>
       </div>
 
+      {downloadError && <p role="alert" className="px-3 py-2 text-xs text-destructive">{downloadError}</p>}
+
       {/* Preview area */}
       <div className="flex-1 overflow-auto scrollbar-thin p-3 flex justify-center bg-muted/20">
         {isBuilding ? (
@@ -125,19 +141,15 @@ export const PdfPreview = memo(function PdfPreview({
           </div>
         ) : pdfUrl ? (
           <div
-            className="bg-white shadow-floating rounded-sm overflow-hidden transition-transform origin-top-center"
+            className="bg-white shadow-floating rounded-sm overflow-hidden w-full h-full min-h-0"
             style={{
-              transform: `scale(${zoom / 100})`,
-              width: `${zoom >= 100 ? '100%' : `${zoom}%`}`,
-              height: `${zoom >= 100 ? '100%' : `${zoom}%`}`,
               filter: darkMode ? "invert(1) hue-rotate(180deg)" : "none",
             }}
           >
             <iframe
-              src={pdfUrl}
+              src={`${pdfUrl.split('#')[0]}#toolbar=0&navpanes=0&${fitPage ? 'view=Fit' : `zoom=${zoom}`}`}
               title="PDF Preview"
               className="w-full h-full border-0"
-              style={{ minWidth: "612px", minHeight: "792px" }}
             />
           </div>
         ) : (
@@ -172,6 +184,7 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={title}
     >
       {children}
     </Button>

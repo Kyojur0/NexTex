@@ -1,15 +1,18 @@
 "use client"
 
-import { memo, useRef, useEffect, useCallback, useState, useMemo, useDeferredValue } from "react"
+import { memo, useRef, useEffect, useLayoutEffect, useCallback, useState, useMemo, useDeferredValue } from "react"
 import { tokenizeLaTeX, getTokenColor, Token } from "@/lib/syntax-highlighter"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { Sparkles } from "lucide-react"
+import { FindReplace } from "./find-replace"
+import { useEditorStore } from "@/lib/store"
 
 interface EnhancedCodeEditorProps {
   content: string
   onChange: (content: string) => void
   fileName: string
+  documentId?: string
   fontSize?: number
   tabSize?: number
   enableSyntaxHighlight?: boolean
@@ -22,6 +25,7 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
   content,
   onChange,
   fileName,
+  documentId,
   fontSize = 14,
   tabSize = 2,
   enableSyntaxHighlight = false,
@@ -39,6 +43,101 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
   const { theme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [lineHeights, setLineHeights] = useState<number[]>([])
+  const [search, setSearch] = useState<{ replace: boolean; request: number; query: string } | null>(null)
+  const selectionRef = useRef({ start: 0, end: 0 })
+  const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null)
+  const readOnly = useEditorStore((state) => state.isNavigating || !!state.pendingDraft)
+  const caretHistoryRef = useRef({
+    document: documentId ?? fileName,
+    selections: new Map<string, { start: number; end: number }>(),
+  })
+
+  const selectRange = useCallback((start: number, end: number) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.focus()
+    textarea.setSelectionRange(start, end)
+    selectionRef.current = { start, end }
+    const targetLine = textarea.value.slice(0, start).split('\n').length - 1
+    const scrollOffset = lineHeights.slice(0, targetLine).reduce((sum, height) => sum + height, 0)
+    if (scrollOffset < textarea.scrollTop || scrollOffset > textarea.scrollTop + textarea.clientHeight - fontSize * 1.5) {
+      textarea.scrollTop = Math.max(0, scrollOffset - fontSize * 3)
+    }
+  }, [lineHeights, fontSize])
+
+  // Document content/history belongs to the shared store. This component keeps
+  // only caret positions and never records a second undo sequence on remount.
+  useLayoutEffect(() => {
+    const history = caretHistoryRef.current
+    const identity = documentId ?? fileName
+    if (history.document !== identity) {
+      caretHistoryRef.current = { document: identity, selections: new Map() }
+      selectionRef.current = { start: 0, end: 0 }
+      pendingSelectionRef.current = null
+      setSearch(null)
+    }
+    if (pendingSelectionRef.current) {
+      const { start, end } = pendingSelectionRef.current
+      pendingSelectionRef.current = null
+      selectRange(start, end)
+    }
+  }, [content, documentId, fileName, selectRange])
+
+  const commitChange = useCallback((next: string, start: number, end = start, restoreSelection = true) => {
+    if (readOnly) return
+    if (next === content) {
+      if (restoreSelection) selectRange(start, end)
+      return
+    }
+    const selections = caretHistoryRef.current.selections
+    selections.set(content, selectionRef.current)
+    selections.set(next, { start, end })
+    if (selections.size > 200) selections.delete(selections.keys().next().value!)
+    selectionRef.current = { start, end }
+    if (restoreSelection) pendingSelectionRef.current = { start, end }
+    onChange(next)
+  }, [content, onChange, readOnly, selectRange])
+
+  const moveHistory = useCallback((direction: number) => {
+    const state = useEditorStore.getState()
+    if (readOnly || (direction < 0 ? !state.canUndo : !state.canRedo)) return
+    caretHistoryRef.current.selections.set(state.content, selectionRef.current)
+    if (direction < 0) state.undo()
+    else state.redo()
+    const next = useEditorStore.getState().content
+    const savedSelection = caretHistoryRef.current.selections.get(next)
+    pendingSelectionRef.current = savedSelection ?? {
+      start: Math.min(selectionRef.current.start, next.length),
+      end: Math.min(selectionRef.current.end, next.length),
+    }
+  }, [readOnly])
+
+  const insertText = useCallback((text: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    selectionRef.current = { start, end }
+    commitChange(content.slice(0, start) + text + content.slice(end), start + text.length)
+  }, [content, commitChange])
+
+  const openSearch = useCallback((replace: boolean) => {
+    const textarea = textareaRef.current
+    const query = textarea ? content.slice(textarea.selectionStart, textarea.selectionEnd) : ''
+    setSearch((previous) => ({ replace, request: (previous?.request ?? 0) + 1, query: query.includes('\n') ? '' : query }))
+  }, [content])
+
+  useEffect(() => {
+    const handleCommand = (event: Event) => {
+      const { command, text } = (event as CustomEvent<{ command: string; text?: string }>).detail
+      if (command === 'undo') moveHistory(-1)
+      else if (command === 'redo') moveHistory(1)
+      else if (command === 'find' || command === 'replace') openSearch(command === 'replace')
+      else if (command === 'insert' && typeof text === 'string') insertText(text)
+    }
+    window.addEventListener('editor:command', handleCommand)
+    return () => window.removeEventListener('editor:command', handleCommand)
+  }, [moveHistory, openSearch, insertText])
 
   useEffect(() => {
     setMounted(true)
@@ -49,8 +148,8 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
     const handler = (e: CustomEvent<{ line: number }>) => {
       if (textareaRef.current) {
         const linesArr = content.split("\n")
-        const targetLine = Math.max(0, e.detail.line - 1)
-        const charOffset = linesArr.slice(0, targetLine).join("\n").length
+        const targetLine = Math.min(linesArr.length - 1, Math.max(0, e.detail.line - 1))
+        const charOffset = linesArr.slice(0, targetLine).reduce((sum, line) => sum + line.length + 1, 0)
         textareaRef.current.focus()
         textareaRef.current.setSelectionRange(charOffset, charOffset + (linesArr[targetLine]?.length || 0))
         // Sum wrapped heights of lines before target
@@ -62,27 +161,30 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
     return () => window.removeEventListener("editor:jump-to-line", handler as EventListener)
   }, [content, lineHeights])
 
-  // Handle tab key
+  // These shortcuts belong to the source textarea, never to settings or other inputs.
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.metaKey || e.ctrlKey) {
+      const key = e.key.toLowerCase()
+      if (key === 'z' || key === 'y' || key === 'f' || key === 'h') {
+        e.preventDefault()
+        e.stopPropagation()
+        if (key === 'z') moveHistory(e.shiftKey ? 1 : -1)
+        else if (key === 'y') moveHistory(1)
+        else openSearch(key === 'h')
+        return
+      }
+    }
     if (e.key === "Tab") {
       e.preventDefault()
-      const textarea = textareaRef.current
-      if (!textarea) return
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const tab = " ".repeat(tabSize)
-      const newContent = content.substring(0, start) + tab + content.substring(end)
-      onChange(newContent)
-      setTimeout(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + tabSize
-      }, 0)
+      insertText(' '.repeat(tabSize))
     }
-  }, [content, onChange, tabSize])
+  }, [insertText, moveHistory, openSearch, tabSize])
 
   // Handle text changes
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(e.target.value)
-  }, [onChange])
+    commitChange(e.target.value, e.target.selectionStart, e.target.selectionEnd, false)
+  }, [commitChange])
 
   // Sync scroll between textarea and highlights / error backgrounds
   const handleScroll = useCallback((e: React.UIEvent<HTMLTextAreaElement>) => {
@@ -206,7 +308,7 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
         </div>
       )
     })
-  }, [lines.length, errorLines, lineHeights, fontSize])
+  }, [lines, errorLines, lineHeights, fontSize])
 
   // Memoize highlighted content — groups consecutive same-token chars into single spans
   const highlightedContent = useMemo(() => {
@@ -276,6 +378,12 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
         </span>
       </div>
 
+      {search && <FindReplace content={content} showReplace={search.replace} focusRequest={search.request}
+        initialQuery={search.query}
+        getSelection={() => ({ start: textareaRef.current?.selectionStart ?? 0, end: textareaRef.current?.selectionEnd ?? 0 })}
+        select={selectRange} replace={commitChange}
+        onClose={() => { setSearch(null); textareaRef.current?.focus() }} />}
+
       {/* Editor Area */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Line Numbers */}
@@ -340,9 +448,15 @@ export const EnhancedCodeEditor = memo(function EnhancedCodeEditor({
 
           {/* Textarea — sits above all layers with z-10 */}
           <textarea
+            aria-label="LaTeX source"
+            data-testid="latex-source"
             ref={textareaRef}
             value={content}
+            readOnly={readOnly}
             onChange={handleChange}
+            onSelect={(event) => {
+              selectionRef.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }
+            }}
             onKeyDown={handleKeyDown}
             onScroll={handleScroll}
             className={cn(

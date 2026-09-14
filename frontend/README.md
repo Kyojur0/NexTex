@@ -65,14 +65,13 @@ lib/visual-editor/
 
 ## Getting started
 
-The frontend expects the NexTex backend running on `http://127.0.0.1:8000`.
+Use the scripts from the repository root to start both services. Full setup,
+configuration, keyboard shortcuts and persistence details are in `../README.md`.
 
 ```bash
-# Backend (FastAPI)
-cd backend && source venv/bin/activate && uvicorn main:app --reload
-
-# Frontend
-cd frontend && npm install && npm run dev   # http://localhost:3000
+# From the repository root
+npm run setup
+npm run dev   # http://127.0.0.1:3000
 ```
 
 Compilation requires a local TeX distribution (MacTeX, TeX Live, or MiKTeX).
@@ -83,5 +82,6 @@ Compilation requires a local TeX distribution (MacTeX, TeX Live, or MiKTeX).
 npm run dev        # dev server (Turbopack)
 npm run build      # production build
 npm run test       # Vitest unit tests
-npm run test:e2e   # Playwright e2e (needs running dev server)
+npm run test:e2e   # Playwright e2e (starts isolated servers automatically)
+npm run check      # TypeScript, ESLint and Vitest
 ```

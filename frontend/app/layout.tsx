@@ -1,23 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import { DM_Sans, JetBrains_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
+import '@fontsource-variable/dm-sans'
+import '@fontsource-variable/jetbrains-mono'
 import './globals.css'
-
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  axes: ['opsz'],
-  variable: '--font-sans',
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-})
 
 export const metadata: Metadata = {
   title: 'NexTex — Modern LaTeX Editor',
-  description: 'A production-grade local LaTeX editor with real filesystem integration, instant preview, and trusted local mode.',
-  generator: 'v0.app',
+  description: 'A local LaTeX editor with visual editing, file management, version history, and PDF compilation.',
   icons: {
     icon: [
       { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
@@ -42,9 +30,8 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${dmSans.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         {children}
-        <Analytics />
       </body>
     </html>
   )

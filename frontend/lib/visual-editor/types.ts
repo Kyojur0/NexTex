@@ -8,11 +8,15 @@ export type BlockType =
   | "figure"
   | "table"
   | "code"
+  | "raw"
 
 export interface VisualBlock<T = unknown> {
   id: string
   type: BlockType
   data: T
+  /** Original lexeme and data snapshot; untouched blocks round-trip byte for byte. */
+  source?: { latex: string; data: string; prefix: string; suffix: string; previousId?: string }
+  boundary?: "start" | "end"
 }
 
 export interface BlockPlugin<T = unknown> {

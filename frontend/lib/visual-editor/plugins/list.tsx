@@ -1,13 +1,15 @@
 "use client"
 
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { List as ListIcon } from "lucide-react"
 import type { BlockPlugin } from "../types"
 import { InlineText } from "../components/inline-text"
+import { splitInlineSelection } from "../inline"
 
 export interface ListData {
   kind: "itemize" | "enumerate"
   items: string[]
+  options?: string
 }
 
 export const listPlugin: BlockPlugin<ListData> = {
@@ -17,8 +19,12 @@ export const listPlugin: BlockPlugin<ListData> = {
   color: "#10b981",
   defaultData: { kind: "itemize", items: [""] },
   isText: false,
-  renderEditor: ({ block, isActive, onChange, onFocus, onBlur }) => {
+  renderEditor: function ListEditor({ block, isActive, onChange, onFocus, onBlur }) {
     const { kind, items } = block.data
+    const root = useRef<HTMLDivElement>(null)
+    const focusItem = useCallback((index:number) => requestAnimationFrame(() => {
+      root.current?.querySelectorAll<HTMLElement>('[data-latex-editor]')[index]?.focus()
+    }),[])
 
     const updateItem = useCallback(
       (idx: number, value: string) => {
@@ -58,22 +64,26 @@ export const listPlugin: BlockPlugin<ListData> = {
       (e: React.KeyboardEvent<HTMLDivElement>, idx: number) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault()
-          const fakeEvent = { stopPropagation: () => {} } as unknown as React.MouseEvent
           const next = [...items]
-          next.splice(idx + 1, 0, "")
+          const [before,after] = splitInlineSelection(e.currentTarget)
+          next[idx] = before
+          next.splice(idx + 1, 0, after)
           onChange({ ...block.data, items: next })
+          focusItem(idx + 1)
         }
         if (e.key === "Backspace" && items[idx] === "" && items.length > 1) {
           e.preventDefault()
           const next = items.filter((_, i) => i !== idx)
           onChange({ ...block.data, items: next })
+          focusItem(Math.max(0,idx - 1))
         }
       },
-      [items, block.data, onChange],
+      [items, block.data, onChange, focusItem],
     )
 
     return (
       <div
+        ref={root}
         style={{ padding: "2px 0", fontSize: "16px", lineHeight: "1.62" }}
         onFocus={onFocus}
         onBlur={onBlur}
@@ -236,6 +246,6 @@ export const listPlugin: BlockPlugin<ListData> = {
   },
   toLaTeX: (data) => {
     const body = data.items.map((i) => `  \\item ${i.trim()}`).join("\n")
-    return `\\begin{${data.kind}}\n${body || "  \\item"}\n\\end{${data.kind}}`
+    return `\\begin{${data.kind}}${data.options || ""}\n${body || "  \\item"}\n\\end{${data.kind}}`
   },
 }

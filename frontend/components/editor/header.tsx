@@ -17,12 +17,13 @@ import {
 import {
   Sun, Moon, Monitor, FolderOpen, File, Save, Download,
   Settings, Play, ChevronDown, Plus, Clock, FileText,
-  Keyboard, PanelRight, PanelRightClose, PanelLeft,
+  PanelRight, PanelRightClose, PanelLeft,
   PanelLeftClose, Sparkles, Folder,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 interface HeaderProps {
+  onNewFile: () => void
   onOpenFolder: () => void
   onOpenFile: () => void
   onSave: () => void
@@ -36,6 +37,22 @@ interface HeaderProps {
   onToggleSidebar: () => void
 }
 
+function editorCommand(command: 'undo' | 'redo' | 'find' | 'replace' | 'insert', text?: string) {
+  // Let the menu finish restoring focus before the editor restores its selection.
+  setTimeout(() => window.dispatchEvent(new CustomEvent('editor:command', { detail: { command, text } })), 0)
+}
+
+const SNIPPETS = [
+  { label: 'Section heading', text: '\\section{Section title}\n' },
+  { label: 'Experience entry', text: '\\textbf{Job Title --- Company} \\hfill 2024--Present\n\\begin{itemize}\n  \\item Describe your contribution and its impact.\n\\end{itemize}\n' },
+  { label: 'Education entry', text: '\\textbf{Degree, Institution} \\hfill 2020--2024\n' },
+  { label: 'Skills row', text: '\\textbf{Skills:} Writing, research, software development.\n' },
+  { label: 'Bullet list', text: '\\begin{itemize}\n  \\item First item\n  \\item Second item\n\\end{itemize}\n' },
+  { label: 'Equation', text: '\\begin{equation}\nE = mc^2\n\\end{equation}\n' },
+  { label: 'Table', text: '\\begin{tabular}{ll}\nHeading A & Heading B \\\\\nValue A & Value B \\\\\n\\end{tabular}\n' },
+  { label: 'Code block', text: '\\begin{verbatim}\nYour code here\n\\end{verbatim}\n' },
+]
+
 function formatWorkspacePath(path: string): string {
   if (!path) return ""
   const parts = path.split(/[/\\]/)
@@ -44,7 +61,7 @@ function formatWorkspacePath(path: string): string {
 }
 
 export const Header = memo(function Header({
-  onOpenFolder, onOpenFile, onSave, onSaveAs, onBuild,
+  onNewFile, onOpenFolder, onOpenFile, onSave, onSaveAs, onBuild,
   onNewFromTemplate, onOpenSettings, onTogglePreview,
   showPreview, sidebarCollapsed, onToggleSidebar,
 }: HeaderProps) {
@@ -54,18 +71,21 @@ export const Header = memo(function Header({
   const workspaceRoot  = useEditorStore((s) => s.workspaceRoot)
   const trustedLocalMode = useEditorStore((s) => s.trustedLocalMode)
   const setShowAISpotlight = useEditorStore((s) => s.setShowAISpotlight)
+  const hasDocument = useEditorStore((s) => Boolean(s.activeFilePath))
+  const canUndo = useEditorStore((s) => s.canUndo && !s.isNavigating && !s.pendingDraft)
+  const canRedo = useEditorStore((s) => s.canRedo && !s.isNavigating && !s.pendingDraft)
 
   return (
     <header
       suppressHydrationWarning
-      className="h-12 flex items-center justify-between px-3 select-none shrink-0 transition-colors"
+      className="min-h-12 md:h-12 flex flex-wrap md:flex-nowrap items-center justify-between gap-y-1 px-3 py-1 md:py-0 select-none shrink-0 transition-colors"
       style={{
         borderBottom: "1px solid var(--border)",
         background: "var(--background)",
       }}
     >
       {/* Left: Logo + nav */}
-      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 basis-full md:basis-auto">
 
         {/* Wordmark */}
         <div className="flex items-center gap-2 shrink-0">
@@ -98,9 +118,12 @@ export const Header = memo(function Header({
         {/* File menus */}
         <nav className="flex items-center gap-0.5">
           <TopMenu label="File">
+            <DropdownMenuItem onClick={onNewFile}>
+              <FileText className="mr-2 h-4 w-4" /> New Blank Document
+              <span className="ml-auto text-xs text-muted-foreground">⌘N</span>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onNewFromTemplate}>
               <Plus className="mr-2 h-4 w-4" /> New from Template
-              <span className="ml-auto text-xs text-muted-foreground">⌘N</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onOpenFolder}>
@@ -119,31 +142,29 @@ export const Header = memo(function Header({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onSave}>
+            <DropdownMenuItem onClick={onSave} disabled={!hasDocument}>
               <Save className="mr-2 h-4 w-4" /> Save
               <span className="ml-auto text-xs text-muted-foreground">⌘S</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onSaveAs}>
+            <DropdownMenuItem onClick={onSaveAs} disabled={!hasDocument}>
               <Download className="mr-2 h-4 w-4" /> Save As…
               <span className="ml-auto text-xs text-muted-foreground">⌘⇧S</span>
             </DropdownMenuItem>
           </TopMenu>
 
           <TopMenu label="Edit">
-            <DropdownMenuItem>Undo <span className="ml-auto text-xs text-muted-foreground">⌘Z</span></DropdownMenuItem>
-            <DropdownMenuItem>Redo <span className="ml-auto text-xs text-muted-foreground">⌘⇧Z</span></DropdownMenuItem>
+            <DropdownMenuItem disabled={!hasDocument || !canUndo} onClick={() => editorCommand('undo')}>Undo <span className="ml-auto text-xs text-muted-foreground">⌘Z</span></DropdownMenuItem>
+            <DropdownMenuItem disabled={!hasDocument || !canRedo} onClick={() => editorCommand('redo')}>Redo <span className="ml-auto text-xs text-muted-foreground">⌘⇧Z</span></DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Find <span className="ml-auto text-xs text-muted-foreground">⌘F</span></DropdownMenuItem>
-            <DropdownMenuItem>Replace <span className="ml-auto text-xs text-muted-foreground">⌘H</span></DropdownMenuItem>
+            <DropdownMenuItem disabled={!hasDocument} onClick={() => editorCommand('find')}>Find <span className="ml-auto text-xs text-muted-foreground">⌘F</span></DropdownMenuItem>
+            <DropdownMenuItem disabled={!hasDocument} onClick={() => editorCommand('replace')}>Replace <span className="ml-auto text-xs text-muted-foreground">⌘H</span></DropdownMenuItem>
           </TopMenu>
 
           <TopMenu label="Insert">
-            <DropdownMenuItem><span className="font-mono text-xs mr-2">\section</span> Section heading</DropdownMenuItem>
-            <DropdownMenuItem><span className="font-mono text-xs mr-2">\exp</span> Experience entry</DropdownMenuItem>
-            <DropdownMenuItem><span className="font-mono text-xs mr-2">\edu</span> Education entry</DropdownMenuItem>
-            <DropdownMenuItem><span className="font-mono text-xs mr-2">\skill</span> Skills row</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem><Keyboard className="mr-2 h-4 w-4" /> All Snippets…</DropdownMenuItem>
+            {SNIPPETS.map((snippet) => (
+              <DropdownMenuItem key={snippet.label} disabled={!hasDocument}
+                onClick={() => editorCommand('insert', snippet.text)}>{snippet.label}</DropdownMenuItem>
+            ))}
           </TopMenu>
         </nav>
 
@@ -174,7 +195,7 @@ export const Header = memo(function Header({
       </div>
 
       {/* Right: actions */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0 ml-auto">
         {/* AI */}
         <Button
           variant="ghost"
@@ -182,6 +203,8 @@ export const Header = memo(function Header({
           className="h-8 px-2.5 text-xs gap-1.5 rounded-lg"
           style={{ color: "var(--muted-foreground)" }}
           onClick={() => setShowAISpotlight(true)}
+          aria-label="AI assistant"
+          disabled={!hasDocument}
         >
           <Sparkles className="h-3.5 w-3.5" />
           <span className="hidden sm:block">AI</span>
@@ -226,7 +249,7 @@ export const Header = memo(function Header({
             color: "var(--primary-foreground)",
           }}
           onClick={onBuild}
-          disabled={isBuilding}
+          disabled={isBuilding || !hasDocument}
         >
           <Play className="h-3.5 w-3.5 fill-current" />
           {isBuilding ? "Building…" : "Build"}
@@ -312,7 +335,7 @@ function RecentFilesList() {
         return (
           <DropdownMenuItem
             key={path}
-            onClick={() => { if (id) openFile(id, path) }}
+            onClick={() => { if (id) void openFile(id, path).catch((err) => toast.error(err instanceof Error ? err.message : 'Could not open file.')) }}
             disabled={!id}
           >
             <FileText className="mr-2 h-4 w-4" />

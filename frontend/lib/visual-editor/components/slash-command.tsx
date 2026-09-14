@@ -12,7 +12,7 @@ interface SlashCommandMenuProps {
 }
 
 export function SlashCommandMenu({ query, onSelect, onClose }: SlashCommandMenuProps) {
-  const plugins = getAllPlugins()
+  const plugins = useMemo(() => getAllPlugins(), [])
   const filtered = useMemo(() => {
     const q = query.toLowerCase()
     return plugins.filter(
@@ -26,27 +26,27 @@ export function SlashCommandMenu({ query, onSelect, onClose }: SlashCommandMenuP
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
-
-  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (filtered.length === 0) return
       if (e.key === "ArrowDown") {
         e.preventDefault()
+        e.stopPropagation()
         setSelectedIndex((i) => (i + 1) % filtered.length)
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
+        e.stopPropagation()
         setSelectedIndex((i) => (i - 1 + filtered.length) % filtered.length)
       } else if (e.key === "Enter") {
         e.preventDefault()
+        e.stopPropagation()
         onSelect(filtered[selectedIndex].type)
       } else if (e.key === "Escape") {
+        e.stopPropagation()
         onClose()
       }
     }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", handleKeyDown, true)
+    return () => window.removeEventListener("keydown", handleKeyDown, true)
   }, [filtered, selectedIndex, onSelect, onClose])
 
   useEffect(() => {
@@ -68,6 +68,7 @@ export function SlashCommandMenu({ query, onSelect, onClose }: SlashCommandMenuP
           <button
             key={plugin.type}
             ref={idx === selectedIndex ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+            onMouseDown={event => event.preventDefault()}
             onClick={() => onSelect(plugin.type)}
             className={cn(
               "w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors",

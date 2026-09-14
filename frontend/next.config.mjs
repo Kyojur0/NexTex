@@ -1,10 +1,12 @@
+import { fileURLToPath } from 'node:url'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.NEXTEX_DIST_DIR || '.next',
   images: {
     unoptimized: true,
   },
   turbopack: {
-    root: '.',
+    root: fileURLToPath(new URL('.', import.meta.url)),
   },
 }
 

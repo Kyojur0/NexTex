@@ -17,6 +17,7 @@ venv/
 
 # NexTex runtime state & build output
 backend/.nextex_config.json
+backend/.nextex_config.tmp
 backend/test.txt
 .nextex_builds/
 tex_files/.nextex_builds/
@@ -24,6 +25,12 @@ tex_files/.nextex_builds/
 # Node / Next.js
 node_modules/
 .next/
+.next-e2e/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.env.*
+!.env.example
 out/
 dist/
 .vercel/

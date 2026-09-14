@@ -12,14 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-# Ensure we test against a fresh config and workspace
-TEST_CONFIG_PATH = Path(__file__).parent / ".nextex_test_config.json"
-TEST_DEFAULT_ROOT = Path(__file__).parent / "tex_files_test"
-
-# Patch config path before importing main
 import main as main_module
-main_module.CONFIG_PATH = TEST_CONFIG_PATH
-main_module.DEFAULT_ROOT = TEST_DEFAULT_ROOT.resolve()
 
 from main import (
     app,
@@ -35,19 +28,11 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def clean_test_env():
-    """Reset config and workspace before each test."""
-    if TEST_CONFIG_PATH.exists():
-        TEST_CONFIG_PATH.unlink()
-    if TEST_DEFAULT_ROOT.exists():
-        shutil.rmtree(TEST_DEFAULT_ROOT)
-    TEST_DEFAULT_ROOT.mkdir(parents=True, exist_ok=True)
-    yield
-    # Cleanup after test
-    if TEST_CONFIG_PATH.exists():
-        TEST_CONFIG_PATH.unlink()
-    if TEST_DEFAULT_ROOT.exists():
-        shutil.rmtree(TEST_DEFAULT_ROOT)
+def clean_test_env(isolated_workspace):
+    """Keep older tests' names pointing at the disposable fixture."""
+    global TEST_CONFIG_PATH, TEST_DEFAULT_ROOT
+    TEST_CONFIG_PATH = main_module.CONFIG_PATH
+    TEST_DEFAULT_ROOT = isolated_workspace
 
 
 # ---------------------------------------------------------------------------

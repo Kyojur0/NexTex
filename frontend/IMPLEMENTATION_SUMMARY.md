@@ -1,134 +1,67 @@
-# NexTex — Implementation Notes
+# NexTex implementation map
 
-## Overview
+The root README documents installation and user workflows. This file maps runtime
+ownership for developers; verification evidence is in `docs/superpowers/` at repo root.
 
-NexTex is a local-first LaTeX editor with two editing modes: a raw code editor and a
-visual block editor that round-trips to `.tex`. The UI follows the **Fable5 warm
-parchment** design system — burnt-orange accent (`#C44528`), Georgia serif typography
-on a white page card, DM Sans for the shell.
+## Source and persistence
 
----
+`lib/store.ts` owns the active workspace/file, source string, saved source/revision,
+serialized saves, navigation lock, source undo/redo, compilation, and UI settings.
+All edits use `setContent`; it computes dirty state and records a browser recovery
+draft. Undo/redo share exact source snapshots across both modes. File identity changes
+reset transient source history. Save conflicts preserve the unsaved buffer.
 
-## Architecture
+`lib/drafts.ts` keys recovery by both workspace and path. `lib/version-db.ts` stores
+IndexedDB snapshots under that same identity, serializes automatic snapshot creation,
+deduplicates content, prunes old automatic versions, and moves history after rename.
+`hooks/use-document-lifecycle.ts` owns autosave, quiet-period and periodic snapshots,
+and the unsaved-change reload warning. The history panel is not the persistence owner.
 
-### State (`lib/store.ts`)
-Single Zustand store covering everything:
-- **Workspace** — file tree, active file, recent files, workspace root, trusted-local flag
-- **Editor** — content string, isModified, errorLines
-- **Build** — isBuilding, buildLogs, showBuildLog, pdfUrl
-- **UI** — showPreview, showSettings, showTemplateModal, showAISpotlight,
-  showHistory, showVisualLatexPanel, sidebarWidth, isDragging, activeEditorTab
-- **Settings** — fontSize, tabSize, wordWrap, enableSyntaxHighlight, autoSave,
-  buildOnSave, compiler, aiModel
-- Persisted to localStorage via a Zustand middleware
+## Editor and UI
 
-### Visual editor (`lib/visual-editor/`)
+`app/page.tsx` mounts lifecycle hooks and composes the header, dialogs, file/history
+sidebar, selected editing mode, PDF preview, diagnostics, and recovery/error status.
+The file-operation lock and recovery decision make the editor inert when needed.
+`components/editor/header.tsx` dispatches text/visual commands and opens file/settings
+flows. `file-dialogs.tsx`, `file-tree.tsx`, and `template-modal.tsx` call shared store
+operations; `lib/templates.ts` contains standalone compilable templates.
 
-**Block model**
+`enhanced-code-editor.tsx` owns caret/selection and code input behavior, while source
+history belongs to the store. `find-replace.tsx` provides literal search/replacement.
+`visual-editor.tsx` manages source-backed blocks, selection, formatting, and insertion;
+`block-canvas.tsx` provides drag/drop and `block-renderer.tsx` supplies block controls.
 
-Each block is `{ id, type, data }`. Block types:
-`paragraph | section | math | figure | list | table | code`
+`lib/visual-editor/parser.ts` recognizes supported LaTeX structures and preserves raw
+source for unsupported syntax. Blocks retain their original lexeme and a semantic
+fingerprint. The serializer reuses unchanged lexemes, including whitespace and line
+endings, and generates changed blocks through plugins. Document boundaries are
+protected. Plugins cover paragraphs, headings, lists, math, figures, tables, code, and
+raw LaTeX. Hook-using editors are proper React components. Inline formatting maps
+between safe DOM formatting and LaTeX, preserving nested constructs when unsupported.
 
-Data types per plugin are defined in each plugin file and typed with
-`BlockPlugin<TData>`.
+Figures upload through the backend, store returned document-relative asset paths, and
+avoid overwriting newer edits when an upload resolves. Table data tracks spanning and
+hidden cells; insert/delete/merge operations maintain that grid before serialization.
 
-**Parser** (`parser.ts`) — LaTeX string → `AnyVisualBlock[]`  
-Walks the LaTeX line by line, matches environments and commands, produces typed
-block objects. Handles `\section`, `\subsection`, `\subsubsection`, `equation`,
-`figure`, `itemize`, `enumerate`, `tabular`, `lstlisting`, inline paragraphs.
+## Services
 
-**Serializer** (`serializer.ts`) — `AnyVisualBlock[]` → LaTeX string  
-Delegates to each plugin's `toLaTeX(data)` method and joins with blank lines.
+`lib/api.ts` defines backend requests and structured errors. `backend/main.py` owns
+workspace confinement, atomic revision-aware file writes, validated raster assets,
+compiler capabilities, and bounded worker-thread builds with source diagnostics.
+`smart-terminal.tsx` displays mapped issues and navigates to their source file/line.
+`pdf-preview.tsx` embeds the browser PDF viewer and downloads compiled bytes.
 
-**Plugin contract** (`types.ts`)
-```ts
-interface BlockPlugin<TData> {
-  type: BlockType
-  label: string
-  icon: LucideIcon
-  color: string          // hex, used for icon tint in insert picker
-  defaultData: TData
-  isText: boolean        // enables split/mergeUp keyboard behaviour
-  renderEditor(ctx): React.ReactNode
-  toLaTeX(data: TData): string
-}
-```
+`app/api/ai/suggest/route.ts` validates same-origin requests and bounded inputs, checks
+server configuration, and invokes a configured gateway or OpenAI-compatible provider.
+It validates completion output and returns explicit errors for missing configuration,
+provider failure, empty/truncated output, or invalid requests. `ai-spotlight.tsx` captures
+request source and selection, previews differences, and rejects stale replacements.
 
-`renderEditor` is called inside `BlockRenderer` and may contain hooks
-(useState, useRef, useCallback, useEffect) — the same plugin is always
-rendered in the same slot, so hook order is stable.
+## Tooling
 
-**Block renderer** (`components/editor/block-renderer.tsx`)  
-Wraps each block with the Fable5 block frame:
-- 3 px left border — transparent → `var(--primary)` when active
-- Drag handle on the left (GripVertical, absolute-positioned)
-- Floating type chip + dup/delete icons above the block when active
-- `onMouseDown` uses `e.preventDefault()` on all control buttons to keep
-  InlineText focused and prevent premature `onBlur → isActive=false` races
-
-### Table plugin — cell merge model
-
-`TableCell = { content, colspan, rowspan, hidden? }`  
-Rows are `TableCell[][]`. Hidden cells are still stored but not rendered
-(`colSpan/rowSpan` of the root cell covers them). LaTeX export uses
-`\multicolumn` and `\multirow`.
-
-Selection is two React state values (`selAnchor`, `selHead`) tracking
-`[row, col]` indices. Shift-click extends the selection rectangle.
-
-### Figure plugin — image upload
-
-Uses `URL.createObjectURL` for an in-editor preview stored in component state
-(not persisted). The filename is stored in block data for LaTeX export.
-A hidden `<input type="file" accept="image/*">` is triggered by both the
-"browse files" link and the drag-drop area.
-
-### Formatting toolbar
-
-Single 46 px bar (Fable5 style):  
-`[Style ▾] | [↩][↺] | [B][I][U][~~] | [•][1.] | [ƒx][<>][🔗] | [⟵][⟹] | [+Insert▾] — [Code|Visual] [{ }LaTeX]`
-
-The style picker and insert dropdown manage their own open/close state with
-`useRef` + `document.addEventListener("mousedown", close)` for outside-click
-dismissal.
-
----
-
-## Design tokens
-
-All in `app/globals.css` as CSS custom properties:
-
-| Token | Light | Dark |
-|---|---|---|
-| `--background` | `#F7F5F0` | `#211E1A` |
-| `--card` (page) | `#FFFFFF` | `#2A2620` |
-| `--primary` (accent) | `#C44528` | `#E05838` |
-| `--border` | `#E6E1D5` | `#363028` |
-| `--visual-editor-bg` | `#F0EDE6` | `#211E1A` |
-| `--code-bg` | `#FBF7EE` | `#1D1A16` |
-
-Colour palette overrides (blue, emerald, minimal) swap only `--primary` and
-related tokens.
-
----
-
-## Key interactions
-
-| Action | How |
-|---|---|
-| Block select | Click anywhere on block → `setFocusedBlockId` |
-| Block deselect | `onBlur` on block container → `setFocusedBlockId(null)` |
-| Drag reorder | `@dnd-kit/sortable` `PointerSensor` (5 px threshold) |
-| Insert block | Hover insert line → click + → pick type, or toolbar Insert menu |
-| Split paragraph | Enter key in `InlineText` → `onSplit(before, after)` |
-| Merge up | Backspace at start → `onMergeUp` |
-| Table merge | Click cell, Shift+click another → Merge cells button |
-| Keyboard shortcuts | ⌘S save, ⌘B build, ⌘K AI spotlight, Esc close spotlight |
-
----
-
-## Testing
-
-- **Vitest** unit tests in `lib/__tests__/` (store, API, syntax highlighter)
-- **Playwright** e2e in `e2e/` (visual editor smoke tests)
-- Component test for `file-tree` in `components/editor/__tests__/`
+Next.js/React/TypeScript with Tailwind, Zustand, Radix primitives, dnd-kit, and KaTeX.
+Fonts are packaged locally. `eslint.config.mjs`, Vitest, backend Pytest and Playwright
+cover contracts and product flows. `playwright.config.ts` starts isolated services and
+uses temporary workspaces. Root `scripts/build.mjs` records the API port compiled into
+the production bundle; `scripts/run.mjs` launches and stops both local services and
+checks build/port compatibility. CI runs checks, build and browser acceptance tests.

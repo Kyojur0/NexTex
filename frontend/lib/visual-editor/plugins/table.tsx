@@ -10,11 +10,18 @@ export interface TableCell {
   colspan: number   // ≥1
   rowspan: number   // ≥1
   hidden?: boolean  // true = absorbed by a neighbouring merge
+  alignment?: string
 }
 
 export interface TableData {
   rows: TableCell[][]
   caption: string
+  alignment?: string
+  placement?: string
+  centered?: boolean
+  hasCaption?: boolean
+  topRule?: boolean
+  bottomRule?: boolean
 }
 
 function makeCell(content = ""): TableCell {
@@ -27,16 +34,22 @@ function makeRow(cols: number): TableCell[] {
 
 /** Count logical columns in the first non-empty row */
 function colCount(rows: TableCell[][]): number {
-  for (const row of rows) {
-    const n = row.reduce((s, c) => s + (c.hidden ? 0 : c.colspan), 0)
-    if (n > 0) return n
-  }
-  return 1
+  return Math.max(1,...rows.map(row => row.length))
 }
 
-/** True if cell (r,c) is logically occupied by the merge rooted at (tr,tc) */
-function isCoveredBy(tr: number, tc: number, cell: TableCell, r: number, c: number) {
-  return r >= tr && r < tr + cell.rowspan && c >= tc && c < tc + cell.colspan
+/** Rebuild covered cells after a structural edit, keeping merges within the grid. */
+function rebuildGrid(rows: TableCell[][]): TableCell[][] {
+  const width = colCount(rows)
+  const result = rows.map(() => makeRow(width))
+  rows.forEach((row,r) => row.forEach((cell,c) => {
+    if (cell.hidden || result[r][c].hidden) return
+    const colspan = Math.min(cell.colspan,width - c), rowspan = Math.min(cell.rowspan,rows.length - r)
+    result[r][c] = {...cell,colspan,rowspan,hidden:false}
+    for (let rr=r;rr<r+rowspan;rr++) for (let cc=c;cc<c+colspan;cc++) {
+      if (rr !== r || cc !== c) result[rr][cc] = {...makeCell(),hidden:true}
+    }
+  }))
+  return result
 }
 
 const ACCENT = "var(--primary)"
@@ -142,7 +155,7 @@ export const tablePlugin: BlockPlugin<TableData> = {
   },
   isText: false,
 
-  renderEditor: ({ block, isActive, onChange, onFocus, onBlur }) => {
+  renderEditor: function TableEditor({ block, isActive, onChange, onFocus, onBlur }) {
     const { rows, caption } = block.data
     const numCols = colCount(rows)
 
@@ -152,8 +165,8 @@ export const tablePlugin: BlockPlugin<TableData> = {
 
     const commit = useCallback(
       (newRows: TableCell[][], newCaption = caption) =>
-        onChange({ rows: newRows, caption: newCaption }),
-      [caption, onChange],
+        onChange({ ...block.data, rows: newRows, caption: newCaption, alignment: newRows[0]?.length === rows[0]?.length ? block.data.alignment : undefined }),
+      [block.data, rows, caption, onChange],
     )
 
     // ── Cell content update
@@ -170,9 +183,9 @@ export const tablePlugin: BlockPlugin<TableData> = {
     // ── Add row after index ri
     const addRow = useCallback(
       (ri: number) => {
-        const next = [...rows]
+        const next = rows.map((row,r) => row.map(cell => !cell.hidden && r <= ri && r + cell.rowspan > ri + 1 ? {...cell,rowspan:cell.rowspan + 1} : {...cell}))
         next.splice(ri + 1, 0, makeRow(rows[0]?.length ?? numCols))
-        commit(next)
+        commit(rebuildGrid(next))
       },
       [rows, numCols, commit],
     )
@@ -181,7 +194,14 @@ export const tablePlugin: BlockPlugin<TableData> = {
     const deleteRow = useCallback(
       (ri: number) => {
         if (rows.length <= 1) return
-        commit(rows.filter((_, i) => i !== ri))
+        const next = rows.map(row => row.map(cell => ({...cell})))
+        rows.forEach((row,r) => row.forEach((cell,c) => {
+          if (cell.hidden) return
+          if (r < ri && r + cell.rowspan > ri) next[r][c].rowspan--
+          if (r === ri && cell.rowspan > 1) next[r+1][c] = {...cell,rowspan:cell.rowspan-1}
+        }))
+        next.splice(ri,1)
+        commit(rebuildGrid(next))
         setSelAnchor(null); setSelHead(null)
       },
       [rows, commit],
@@ -191,11 +211,11 @@ export const tablePlugin: BlockPlugin<TableData> = {
     const addCol = useCallback(
       (ci: number) => {
         const next = rows.map((row) => {
-          const r = [...row]
+          const r = row.map((cell,c) => !cell.hidden && c <= ci && c + cell.colspan > ci + 1 ? {...cell,colspan:cell.colspan + 1} : {...cell})
           r.splice(ci + 1, 0, makeCell())
           return r
         })
-        commit(next)
+        commit(rebuildGrid(next))
       },
       [rows, commit],
     )
@@ -204,8 +224,17 @@ export const tablePlugin: BlockPlugin<TableData> = {
     const deleteCol = useCallback(
       (ci: number) => {
         if (numCols <= 1) return
-        const next = rows.map((row) => row.filter((_, i) => i !== ci))
-        commit(next)
+        const next = rows.map(row => {
+          const adjusted = row.map(cell => ({...cell}))
+          row.forEach((cell,c) => {
+            if (cell.hidden) return
+            if (c < ci && c + cell.colspan > ci) adjusted[c].colspan--
+            if (c === ci && cell.colspan > 1) adjusted[c+1] = {...cell,colspan:cell.colspan-1}
+          })
+          adjusted.splice(ci,1)
+          return adjusted
+        })
+        commit(rebuildGrid(next))
         setSelAnchor(null); setSelHead(null)
       },
       [rows, numCols, commit],
@@ -227,12 +256,16 @@ export const tablePlugin: BlockPlugin<TableData> = {
         : false
 
     const canMerge = selBox
-      ? selBox.rMax > selBox.rMin || selBox.cMax > selBox.cMin
+      ? (selBox.rMax > selBox.rMin || selBox.cMax > selBox.cMin) && rows.every((row,r) => row.every((cell,c) => {
+          if (cell.hidden) return true
+          const intersects = r <= selBox.rMax && r + cell.rowspan > selBox.rMin && c <= selBox.cMax && c + cell.colspan > selBox.cMin
+          return !intersects || (r >= selBox.rMin && r + cell.rowspan - 1 <= selBox.rMax && c >= selBox.cMin && c + cell.colspan - 1 <= selBox.cMax)
+        }))
       : false
 
     // ── Merge selected cells
     const mergeCells = useCallback(() => {
-      if (!selBox) return
+      if (!selBox || !canMerge) return
       const { rMin, rMax, cMin, cMax } = selBox
       // collect content
       const content = rows
@@ -260,7 +293,7 @@ export const tablePlugin: BlockPlugin<TableData> = {
       )
       commit(next)
       setSelAnchor(null); setSelHead(null)
-    }, [rows, selBox, commit])
+    }, [rows, selBox, canMerge, commit])
 
     // ── Unmerge a cell
     const unmergeCell = useCallback(
@@ -498,23 +531,22 @@ export const tablePlugin: BlockPlugin<TableData> = {
 
   toLaTeX: (data) => {
     if (!data.rows.length) return ""
-    const cols = data.rows[0]
-      .filter((c) => !c.hidden)
-      .map(() => "l")
-      .join("|")
+    const width = Math.max(...data.rows.map(row => row.length))
+    const cols = data.alignment || Array.from({length: width}, () => "l").join("|")
     const body = data.rows
-      .map((row) =>
-        row
-          .filter((c) => !c.hidden)
-          .map((c) => {
-            let cell = c.content
-            if (c.colspan > 1) cell = `\\multicolumn{${c.colspan}}{l}{${cell}}`
-            if (c.rowspan > 1) cell = `\\multirow{${c.rowspan}}{*}{${cell}}`
-            return cell
-          })
-          .join(" & "),
-      )
-      .join(" \\\\\n")
-    return `\\begin{table}[h]\n\\centering\n\\begin{tabular}{${cols}}\n\\hline\n${body}\n\\hline\n\\end{tabular}\n\\caption{${data.caption}}\n\\end{table}`
+      .map((row) => {
+        const cells: string[] = []
+        for (let index = 0; index < width; index++) {
+          const c = row[index]
+          if (!c || c.hidden) { cells.push(""); continue }
+          let cell = c.content
+          if (c.rowspan > 1) cell = `\\multirow{${c.rowspan}}{*}{${cell}}`
+          if (c.colspan > 1) cell = `\\multicolumn{${c.colspan}}{${c.alignment || "l"}}{${cell}}`
+          cells.push(cell)
+          index += c.colspan - 1
+        }
+        return cells.join(" & ")
+      }).join(" \\\\\n")
+    return `\\begin{table}${data.placement ?? "[h]"}\n${data.centered === false ? "" : "\\centering\n"}\\begin{tabular}{${cols}}\n${data.topRule === false ? "" : "\\hline\n"}${body} \\\\\n${data.bottomRule === false ? "" : "\\hline\n"}\\end{tabular}\n${data.hasCaption !== false || data.caption ? `\\caption{${data.caption}}\n` : ""}\\end{table}`
   },
 }

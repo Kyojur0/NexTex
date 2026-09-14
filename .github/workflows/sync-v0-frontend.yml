@@ -1,4 +1,4 @@
-name: Sync v0 Frontend into Monorepo
+name: Import v0 Design for Review
 
 on:
   workflow_dispatch:
@@ -29,15 +29,14 @@ jobs:
           path: v0-src
           fetch-depth: 1
 
-      - name: Sync v0 repo into frontend/
+      - name: Import design reference without replacing product code
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p frontend
+          mkdir -p docs/design-upstream
 
-          # Mirror the v0 repo into NexTex/frontend, but keep the monorepo's
-          # integration seam intact (we own api.ts in this repo).
+          # Upstream is design input. Product code is maintained and tested here.
           rsync -a --delete \
             --exclude ".git/" \
             --exclude ".github/" \
@@ -46,8 +45,7 @@ jobs:
             --exclude ".vercel/" \
             --exclude ".env" \
             --exclude ".env.*" \
-            --exclude "lib/api.ts" \
-            "v0-src/" "frontend/"
+            "v0-src/" "docs/design-upstream/"
 
           # Never commit the checked-out source folder into the monorepo.
           rm -rf v0-src
@@ -55,13 +53,11 @@ jobs:
       - name: Create pull request
         uses: peter-evans/create-pull-request@v8.1.0
         with:
-          commit-message: "chore(frontend): sync from v0-nextex-design"
-          title: "Sync frontend from v0-nextex-design"
+          commit-message: "docs: import upstream design reference"
+          title: "Review upstream NexTex design changes"
           body: |
-            Automated sync from `Kyojur0/v0-nextex-design` into `frontend/`.
-
-            Notes:
-            - Keeps `frontend/lib/api.ts` unchanged (integration seam owned by monorepo).
-            - Excludes build/deps artifacts (`node_modules`, `.next`, `.vercel`, `.env*`).
+            Imported `Kyojur0/v0-nextex-design` into `docs/design-upstream/` for review.
+            Port desired design changes into the maintained frontend with tests.
+            This import does not replace active application code.
           branch: "bot/v0-sync"
           delete-branch: true

@@ -6,7 +6,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { getPlugin } from "@/lib/visual-editor/plugins"
 import type { AnyVisualBlock, BlockType } from "@/lib/visual-editor/types"
 import { cn } from "@/lib/utils"
-import { Copy, Trash2, GripVertical } from "lucide-react"
+import { Copy, Trash2, GripVertical, ArrowUp, ArrowDown } from "lucide-react"
 
 interface BlockRendererProps {
   block: AnyVisualBlock
@@ -45,8 +45,12 @@ export const BlockRenderer = memo(function BlockRenderer({
 }: BlockRendererProps) {
   const plugin = getPlugin(block.type)
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: block.id, data: { type: block.type } })
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({
+      id: isOverlay ? `${block.id}-overlay` : block.id,
+      disabled: {draggable:Boolean(isOverlay || block.boundary),droppable:Boolean(isOverlay || block.boundary)},
+      data: { type: block.type },
+    })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -60,7 +64,8 @@ export const BlockRenderer = memo(function BlockRenderer({
   const handleMergeUp  = useCallback(()                                         => onMergeUp?.(block.id),              [block.id, onMergeUp])
   const handleInsertAfter = useCallback((type: BlockType)                       => onInsertAfter?.(block.id, type),    [block.id, onInsertAfter])
 
-  const editor = plugin.renderEditor({
+  const Editor = plugin.renderEditor
+  const editor = <Editor {...{
     block,
     isActive,
     onChange: handleChange,
@@ -69,7 +74,7 @@ export const BlockRenderer = memo(function BlockRenderer({
     onInsertAfter: handleInsertAfter,
     onFocus: () => onFocus(block.id),
     onBlur,
-  })
+  }} />
 
   const LABEL = plugin.label.toUpperCase()
 
@@ -77,6 +82,7 @@ export const BlockRenderer = memo(function BlockRenderer({
     <div
       ref={setNodeRef}
       data-testid="block-card"
+      data-block-id={block.id}
       style={{
         ...style,
         /* Fable5 block frame */
@@ -97,8 +103,9 @@ export const BlockRenderer = memo(function BlockRenderer({
       onClick={() => onFocus(block.id)}
     >
       {/* ── Drag handle — left side, vertically centered ── */}
-      {!isOverlay && (
+      {!isOverlay && !block.boundary && (
         <button
+          ref={setActivatorNodeRef}
           type="button"
           {...(attributes as React.ButtonHTMLAttributes<HTMLButtonElement>)}
           {...(listeners as React.ButtonHTMLAttributes<HTMLButtonElement>)}
@@ -123,7 +130,7 @@ export const BlockRenderer = memo(function BlockRenderer({
           }}
           className={cn(
             "active:cursor-grabbing",
-            "group-hover:!opacity-[0.55]",
+            "group-hover:!opacity-[0.55] focus-visible:!opacity-100",
             isActive && "!opacity-100",
           )}
         >
@@ -132,7 +139,7 @@ export const BlockRenderer = memo(function BlockRenderer({
       )}
 
       {/* ── Floating tools — above block, right-aligned, shown when active ── */}
-      {!isOverlay && isActive && (
+      {!isOverlay && isActive && !block.boundary && (
         <div
           style={{
             position: "absolute",
@@ -163,6 +170,8 @@ export const BlockRenderer = memo(function BlockRenderer({
           </div>
 
           {/* Duplicate */}
+          <button type="button" title="Move up" aria-label="Move up" disabled={index === 0} onMouseDown={e => e.preventDefault()} onClick={e => {e.stopPropagation(); onMoveUp?.(block.id)}} className="rounded border bg-[var(--visual-editor-canvas)] disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
+          <button type="button" title="Move down" aria-label="Move down" disabled={index === total - 1} onMouseDown={e => e.preventDefault()} onClick={e => {e.stopPropagation(); onMoveDown?.(block.id)}} className="rounded border bg-[var(--visual-editor-canvas)] disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDuplicate(block.id) }}

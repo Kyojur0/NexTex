@@ -4,11 +4,14 @@ import { memo, useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Sparkles, X, Check, RotateCcw, ChevronDown, Loader } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 interface AISpotlightProps {
   selectedCode: string
   currentContent: string
-  onAccept: (newContent: string) => void
+  documentId: string
+  selectedRange?: { start: number; end: number }
+  onAccept: (newContent: string) => void | Promise<void>
   onClose: () => void
   aiModel: string
 }
@@ -41,6 +44,8 @@ function computeLineDiff(original: string, suggested: string) {
 export const AISpotlight = memo(function AISpotlight({
   selectedCode,
   currentContent,
+  documentId,
+  selectedRange,
   onAccept,
   onClose,
   aiModel,
@@ -50,69 +55,117 @@ export const AISpotlight = memo(function AISpotlight({
   const [suggestion, setSuggestion] = useState("")
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const requestRef = useRef<AbortController | null>(null)
+  const [accepting, setAccepting] = useState(false)
+  const [configuration, setConfiguration] = useState<{ configured: boolean; provider: string | null; local?: boolean; message: string } | null>(null)
+  const [original, setOriginal] = useState<{ documentId: string; content: string; code: string; start: number; end: number } | null>(null)
+  const currentRef = useRef({ documentId, currentContent })
+  currentRef.current = { documentId, currentContent }
+  const stale = !!original && (original.documentId !== documentId || original.content !== currentContent)
 
   // Focus input on mount
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 50)
+    const controller = new AbortController()
+    fetch('/api/ai/suggest', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Configuration unavailable')
+        const data = await response.json()
+        if (typeof data.configured !== 'boolean' || typeof data.message !== 'string') throw new Error('Invalid configuration')
+        setConfiguration(data)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setConfiguration({ configured: false, provider: null, message: 'Could not check AI configuration. Restart the frontend and reopen this dialog.' })
+      })
+    return () => { controller.abort(); requestRef.current?.abort() }
   }, [])
 
   const handleSubmit = useCallback(async (promptText: string) => {
-    if (!promptText.trim()) return
+    if (!promptText.trim() || !configuration?.configured || requestRef.current) return
+    if (!currentContent.trim()) { setError('Open a document with some text first.'); return }
+    let start = 0
+    let end = currentContent.length
+    if (selectedCode && selectedCode !== currentContent) {
+      if (selectedRange && currentContent.slice(selectedRange.start, selectedRange.end) === selectedCode) {
+        start = selectedRange.start
+        end = selectedRange.end
+      } else {
+        start = currentContent.indexOf(selectedCode)
+        if (start < 0 || currentContent.indexOf(selectedCode, start + 1) !== -1) {
+          setError('The selected text is missing or appears more than once. Reselect the passage or work with the full document.')
+          return
+        }
+        end = start + selectedCode.length
+      }
+    }
+    const source = { documentId, content: currentContent, code: currentContent.slice(start, end), start, end }
+    setOriginal(source)
     setPrompt(promptText)
     setStage("loading")
     setError(null)
 
+    const controller = new AbortController()
+    requestRef.current = controller
+    const timeout = setTimeout(() => controller.abort(), 50_000)
     try {
       const res = await fetch("/api/ai/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: promptText,
-          code: selectedCode || currentContent,
+          code: source.code,
           model: aiModel,
         }),
+        signal: controller.signal,
       })
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || "Request failed")
+      if (typeof data.suggestion !== 'string' || !data.suggestion.trim()) throw new Error('The AI response was empty. Please try again.')
       setSuggestion(data.suggestion)
       setStage("diff")
-    } catch (err: any) {
-      setError(err.message || "Something went wrong")
+    } catch (err) {
+      setError(controller.signal.aborted ? 'The request was cancelled or timed out. Please try again.' : err instanceof Error ? err.message : 'Something went wrong')
       setStage("input")
+    } finally {
+      clearTimeout(timeout)
+      if (requestRef.current === controller) requestRef.current = null
     }
-  }, [selectedCode, currentContent, aiModel])
+  }, [selectedCode, selectedRange, currentContent, documentId, aiModel, configuration])
 
-  const handleAccept = useCallback(() => {
-    if (!suggestion) return
-    // Replace selected code (or full content if nothing selected) with suggestion
-    const base = selectedCode || currentContent
-    const newContent = selectedCode
-      ? currentContent.replace(selectedCode, suggestion)
-      : suggestion
-    onAccept(newContent)
-  }, [suggestion, selectedCode, currentContent, onAccept])
+  const handleAccept = useCallback(async () => {
+    if (!suggestion || !original || accepting) return
+    if (currentRef.current.documentId !== original.documentId || currentRef.current.currentContent !== original.content) {
+      setError('The document changed after this request. Generate a new suggestion before accepting.')
+      return
+    }
+    setAccepting(true)
+    setError(null)
+    try {
+      await onAccept(original.content.slice(0, original.start) + suggestion + original.content.slice(original.end))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not apply the suggestion.')
+    } finally {
+      setAccepting(false)
+    }
+  }, [suggestion, original, accepting, onAccept])
 
   const handleReject = useCallback(() => {
     setStage("input")
     setSuggestion("")
     setPrompt("")
+    setOriginal(null)
+    setError(null)
     setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
-  const diff = stage === "diff" ? computeLineDiff(selectedCode || currentContent, suggestion) : []
+  const diff = stage === "diff" ? computeLineDiff(original?.code ?? '', suggestion) : []
   const changedCount = diff.filter(d => d.changed).length
+  const unavailable = !configuration?.configured
 
   return (
-    // Backdrop
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.45)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      {/* Modal */}
-      <div
+    <Dialog open onOpenChange={(open) => { if (!open && !accepting) onClose() }}>
+      <DialogContent showCloseButton={false}
         className={cn(
-          "w-full max-w-2xl rounded-2xl border border-border/60 shadow-2xl overflow-hidden",
+          "w-full sm:max-w-2xl rounded-2xl border border-border/60 shadow-2xl overflow-hidden p-0 gap-0",
           "flex flex-col",
           // Glassmorphism
           "bg-background/80 backdrop-blur-xl",
@@ -125,28 +178,36 @@ export const AISpotlight = memo(function AISpotlight({
             <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
             </div>
-            <span className="text-sm font-semibold">AI Assistant</span>
+            <DialogTitle className="text-sm font-semibold">AI Assistant</DialogTitle>
             {aiModel && (
-              <span className="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted font-mono">
+              <span className="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted font-mono truncate max-w-40" title={aiModel}>
                 {aiModel.split("/").pop() || "Model"}
               </span>
             )}
           </div>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose} aria-label="Close AI assistant" disabled={accepting}>
             <X className="h-4 w-4" />
           </Button>
         </div>
+        <DialogDescription className="px-5 py-2 text-xs border-b border-border/40">
+          {configuration?.configured
+            ? `${selectedCode && selectedCode !== currentContent ? 'Your selection' : 'Your document'} will be sent to ${configuration.local ? 'your local AI server' : 'your configured AI provider'}. Review the suggestion before applying it.`
+            : configuration?.message ?? 'Checking AI configuration…'}
+        </DialogDescription>
+        {(error || stale) && <p role="alert" className="text-xs text-destructive bg-destructive/10 px-5 py-2">
+          {stale ? 'The document changed after this request. Generate a new suggestion before accepting.' : error}
+        </p>}
 
         {/* Input stage */}
         {(stage === "input" || stage === "loading") && (
-          <div className="flex flex-col p-4 gap-3">
+          <div className="flex flex-col p-4 gap-3 overflow-y-auto">
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1.5">
               {QUICK_ACTIONS.map((action) => (
                 <button
                   key={action}
                   onClick={() => handleSubmit(action)}
-                  disabled={stage === "loading"}
+                  disabled={stage === "loading" || unavailable}
                   className="text-xs px-2.5 py-1 rounded-full border border-border/60 text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted transition-all disabled:opacity-40"
                 >
                   {action}
@@ -158,6 +219,8 @@ export const AISpotlight = memo(function AISpotlight({
             <div className="relative">
               <textarea
                 ref={inputRef}
+                aria-label="AI instruction"
+                maxLength={8000}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
@@ -168,7 +231,7 @@ export const AISpotlight = memo(function AISpotlight({
                   if (e.key === "Escape") onClose()
                 }}
                 placeholder="Describe what you want to change... (Enter to send, Shift+Enter for newline)"
-                disabled={stage === "loading"}
+                disabled={stage === "loading" || unavailable}
                 rows={2}
                 className={cn(
                   "w-full resize-none rounded-xl border border-border/60 bg-muted/30 px-4 py-3 pr-12",
@@ -180,7 +243,8 @@ export const AISpotlight = memo(function AISpotlight({
               />
               <button
                 onClick={() => handleSubmit(prompt)}
-                disabled={!prompt.trim() || stage === "loading"}
+                aria-label="Generate suggestion"
+                disabled={!prompt.trim() || stage === "loading" || unavailable}
                 className={cn(
                   "absolute right-3 bottom-3 w-7 h-7 rounded-lg flex items-center justify-center transition-all",
                   "bg-primary text-primary-foreground",
@@ -194,10 +258,6 @@ export const AISpotlight = memo(function AISpotlight({
                 )}
               </button>
             </div>
-
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
-            )}
 
             {stage === "loading" && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -215,11 +275,11 @@ export const AISpotlight = memo(function AISpotlight({
             <div className="flex items-center justify-between px-5 py-2.5 bg-muted/30 border-b border-border/40 shrink-0">
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">Suggested changes</span>
-                <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400">{changedCount} removed</span>
-                <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">{changedCount} added</span>
+                <span>{changedCount} changed line positions</span>
               </div>
               <button
                 onClick={handleReject}
+                disabled={accepting}
                 className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
               >
                 <RotateCcw className="h-3 w-3" /> Try again
@@ -273,6 +333,7 @@ export const AISpotlight = memo(function AISpotlight({
                 variant="outline"
                 size="sm"
                 onClick={handleReject}
+                disabled={accepting}
                 className="h-8 px-4 text-xs"
               >
                 Reject
@@ -280,15 +341,16 @@ export const AISpotlight = memo(function AISpotlight({
               <Button
                 size="sm"
                 onClick={handleAccept}
+                disabled={stale || accepting}
                 className="h-8 px-4 text-xs gap-1.5"
               >
                 <Check className="h-3.5 w-3.5" />
-                Accept changes
+                {accepting ? 'Applying…' : 'Accept changes'}
               </Button>
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 })

@@ -2,10 +2,10 @@
 
 import { useRef, useCallback, useState } from "react"
 import { Type } from "lucide-react"
-import { cn } from "@/lib/utils"
 import type { BlockPlugin, BlockType } from "../types"
 import { InlineText } from "../components/inline-text"
 import { SlashCommandMenu } from "../components/slash-command"
+import { splitInlineSelection } from "../inline"
 
 export interface ParagraphData {
   text: string
@@ -18,7 +18,7 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
   color: "#64748b",
   defaultData: { text: "" },
   isText: true,
-  renderEditor: ({ block, isActive, onChange, onSplit, onMergeUp, onInsertAfter, onFocus, onBlur }) => {
+  renderEditor: function ParagraphEditor({ block, onChange, onSplit, onMergeUp, onInsertAfter, onFocus, onBlur }) {
     const ref = useRef<HTMLDivElement>(null)
     const [slashState, setSlashState] = useState<{ active: boolean; query: string } | null>(null)
 
@@ -37,9 +37,8 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
 
         if (e.key === "Enter" && !e.shiftKey && onSplit) {
           e.preventDefault()
-          const text = el.innerText
-          const offset = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).startOffset : text.length
-          onSplit({ text: text.slice(0, offset) }, { text: text.slice(offset) })
+          const [before, after] = splitInlineSelection(el)
+          onSplit({ text: before }, { text: after })
           return
         }
         if (e.key === "Backspace" && isAtStart && onMergeUp) {
@@ -58,12 +57,18 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
           }
         }
       },
-      [block.data, onSplit, onMergeUp, slashState],
+      [onSplit, onMergeUp, slashState],
     )
 
     const handleInsert = useCallback(
-      (type: BlockType) => { setSlashState(null); onInsertAfter?.(type) },
-      [onInsertAfter],
+      (type: BlockType) => {
+        if (ref.current) {
+          const [before,after] = splitInlineSelection(ref.current)
+          onChange({text:before.replace(/\/[^\s]*$/, '') + after})
+        }
+        setSlashState(null); onInsertAfter?.(type)
+      },
+      [onInsertAfter,onChange],
     )
 
     return (
@@ -89,7 +94,7 @@ export const paragraphPlugin: BlockPlugin<ParagraphData> = {
         />
         {slashState?.active && (
           <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] shadow-floating overflow-hidden">
-            <SlashCommandMenu query={slashState.query} onSelect={handleInsert} onClose={() => setSlashState(null)} />
+            <SlashCommandMenu key={slashState.query} query={slashState.query} onSelect={handleInsert} onClose={() => setSlashState(null)} />
           </div>
         )}
       </div>

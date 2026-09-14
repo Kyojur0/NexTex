@@ -2,14 +2,15 @@
 
 import { useRef, useCallback, useState } from "react"
 import { Heading1 } from "lucide-react"
-import { cn } from "@/lib/utils"
 import type { BlockPlugin, BlockType } from "../types"
 import { InlineText } from "../components/inline-text"
 import { SlashCommandMenu } from "../components/slash-command"
+import { splitInlineSelection } from "../inline"
 
 export interface SectionData {
   level: "section" | "subsection" | "subsubsection"
   title: string
+  starred?: boolean
 }
 
 /* Fable5 heading sizes */
@@ -26,7 +27,7 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
   color: "#6366f1",
   defaultData: { level: "section", title: "" },
   isText: true,
-  renderEditor: ({ block, isActive, onChange, onSplit, onMergeUp, onInsertAfter, onFocus, onBlur }) => {
+  renderEditor: function SectionEditor({ block, onChange, onSplit, onMergeUp, onInsertAfter, onFocus, onBlur }) {
     const ref = useRef<HTMLDivElement>(null)
     const [slashState, setSlashState] = useState<{ active: boolean; query: string } | null>(null)
 
@@ -46,10 +47,8 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
 
         if (e.key === "Enter" && !e.shiftKey && onSplit) {
           e.preventDefault()
-          onSplit(
-            { ...block.data, title: text.slice(0, offset) },
-            { ...block.data, title: text.slice(offset) },
-          )
+          const [before, after] = splitInlineSelection(el)
+          onSplit({ ...block.data, title: before }, { ...block.data, title: after })
           return
         }
         if (e.key === "Backspace" && isAtStart && onMergeUp) {
@@ -72,8 +71,14 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
     )
 
     const handleInsert = useCallback(
-      (type: BlockType) => { setSlashState(null); onInsertAfter?.(type) },
-      [onInsertAfter],
+      (type: BlockType) => {
+        if (ref.current) {
+          const [before,after] = splitInlineSelection(ref.current)
+          onChange({...block.data,title:before.replace(/\/[^\s]*$/, '') + after})
+        }
+        setSlashState(null); onInsertAfter?.(type)
+      },
+      [onInsertAfter,onChange,block.data],
     )
 
     const levelStyle = LEVEL_STYLE[block.data.level]
@@ -106,6 +111,7 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
         {slashState?.active && (
           <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-[var(--visual-editor-toolbar-border)] bg-[var(--visual-editor-toolbar)] shadow-floating overflow-hidden">
             <SlashCommandMenu
+              key={slashState.query}
               query={slashState.query}
               onSelect={handleInsert}
               onClose={() => setSlashState(null)}
@@ -115,5 +121,5 @@ export const sectionPlugin: BlockPlugin<SectionData> = {
       </div>
     )
   },
-  toLaTeX: (data) => `\\${data.level}{${data.title.trim()}}`,
+  toLaTeX: (data) => `\\${data.level}${data.starred ? "*" : ""}{${data.title}}`,
 }
